@@ -204,7 +204,7 @@ async function run(argv) {
     return;
   }
   if (options.command === "--version" || options.command === "version") {
-    console.log("0.8.0");
+    console.log("0.8.1");
     return;
   }
   if (options.command === "init") {

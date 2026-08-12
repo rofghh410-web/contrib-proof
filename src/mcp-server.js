@@ -52,7 +52,7 @@ async function handleRequest(root, request) {
     reply(id, {
       protocolVersion: request.params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "contrib-proof", version: "0.8.0" }
+      serverInfo: { name: "contrib-proof", version: "0.8.1" }
     });
     return;
   }

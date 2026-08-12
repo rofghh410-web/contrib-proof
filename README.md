@@ -2,7 +2,7 @@
 
 Evidence-first contributor-path verification for open-source repositories.
 
-> **ContribProof 0.8.0 is a major upgrade.** The release adds reproducible execution context, offline proof verification, declarative fixture contracts, release-readiness evidence, regression budgets, expiring policy exceptions, and a tamper-evident maintainer ledger. See the [v0.8.0 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.8.0).
+> **ContribProof 0.8 is a major upgrade.** The release adds reproducible execution context, offline proof verification, declarative fixture contracts, release-readiness evidence, regression budgets, expiring policy exceptions, and a tamper-evident maintainer ledger. Use the [v0.8.1 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.8.1), which includes the GitHub Action manifest hotfix.
 
 ContribProof answers a practical maintainer question:
 
@@ -354,7 +354,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: rofghh410-web/contrib-proof@v0.8.0
+      - uses: rofghh410-web/contrib-proof@v0.8.1
         with:
           execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
           diff: "true"

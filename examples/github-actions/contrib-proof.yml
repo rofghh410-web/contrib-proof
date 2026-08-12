@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: rofghh410-web/contrib-proof@v0.8.0
+      - uses: rofghh410-web/contrib-proof@v0.8.1
         with:
           execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
           diff: "true"

@@ -2,6 +2,12 @@
 
 All notable changes to ContribProof are documented here.
 
+## 0.8.1 — 2026-08-12
+
+### Fixed
+
+- quoted the GitHub Action format description so GitHub's action-manifest YAML parser can load `action.yml` correctly.
+
 ## 0.8.0 — 2026-08-12
 
 ### Added
