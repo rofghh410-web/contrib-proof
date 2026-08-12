@@ -50,6 +50,18 @@ npx contrib-proof init
 npx contrib-proof verify --execute --bundle artifacts/contrib-proof
 ```
 
+Verify that a bundle still matches its report and repository evidence after it has been copied or uploaded:
+
+```bash
+contrib-proof proof-verify artifacts/contrib-proof --root . --format markdown
+```
+
+Run the repository's declarative regression fixtures:
+
+```bash
+contrib-proof fixtures --root . --execute --format markdown
+```
+
 The bundle contains:
 
 ```text
@@ -64,10 +76,15 @@ artifacts/contrib-proof/
 ├── review.json       # change-risk and test-evidence packet
 ├── review.md         # maintainer-readable change review
 ├── gate.json         # present when the merge gate was requested
-└── gate.md           # maintainer-readable gate decision
+├── gate.md           # maintainer-readable gate decision
+├── release.json      # present for release-readiness runs
+├── release.md        # maintainer-readable release readiness
+└── (optional ledger)  # recorded separately as an append-only JSONL chain
 ```
 
 `compare` treats check IDs as the stable unit. It reports added, removed, changed, newly failing, newly warning, and resolved checks rather than comparing timestamps or raw report text.
+
+Every generated report also carries an execution context: runtime, exact Git root and commit, dirty/shallow state, configuration hash, and effective options. This makes “same result” claims inspectable across machines and CI jobs.
 
 Generate a remediation plan from any saved JSON report:
 
@@ -82,9 +99,11 @@ Validate an artifact before another tool consumes it:
 ```bash
 contrib-proof validate artifacts/contrib-proof/report.json
 contrib-proof validate artifacts/contrib-proof/plan.json --kind plan --format json
+contrib-proof validate artifacts/contrib-proof/report.json --kind report --format json
+contrib-proof validate artifacts/contrib-proof/manifest.json --kind proof-manifest --format json
 ```
 
-The report, review, gate, and remediation-plan contracts are documented in [`schemas/`](schemas/). The validator is intentionally small and dependency-free; it checks the fields ContribProof promises, not every possible repository-specific extension.
+The report, review, gate, release, baseline, doctor, exception, ledger, execution-context, fixture, and proof contracts are documented in [`schemas/`](schemas/). The validator is intentionally small and dependency-free; it checks the fields ContribProof promises, not every possible repository-specific extension.
 
 ## Architecture
 
@@ -175,7 +194,6 @@ The default policy blocks configured check failures, high-severity review findin
     "maxRisk": "elevated",
     "failOnFindings": ["high"],
     "failOnCheckFailures": true,
-    "failOnWarnings": false,
     "requireReview": true
   }
 }
@@ -203,6 +221,115 @@ The inventory recognizes common package manifests and lockfiles across npm, Pyth
 
 These are review signals. ContribProof does not resolve packages, contact registries, execute workflow YAML, or claim to establish that a dependency is safe.
 
+### Release readiness
+
+Before tagging a release, inspect the actual Git range and the repository metadata:
+
+```bash
+contrib-proof release --root . --since v0.5.0 --format markdown --bundle artifacts/release-proof
+```
+
+The report checks that Git history is readable, the version is valid and consistent with `CITATION.cff`, `CHANGELOG.md` contains the release entry, source changes have test and documentation signals, and no high-severity change-review findings remain. It is a release checklist with evidence, not an automatic publisher or a substitute for maintainer review.
+
+For a long-lived maintenance trend, record only report summaries in a repository-local JSONL file:
+
+```bash
+contrib-proof history --root . --record artifacts/release-proof/report.json --format markdown
+```
+
+History entries intentionally omit source contents, command output, and finding messages. They retain status, score, counts, gate/review/release summaries, and the proof-bundle hash so maintainers can track drift without creating a second source archive.
+
+### Baseline regression budgets
+
+`compare` is useful for investigation; `baseline` is the CI-facing regression decision. It validates both input reports, tracks newly failing and newly warning check IDs, and applies explicit budgets:
+
+```bash
+contrib-proof baseline baseline/report.json current/report.json \
+  --max-new-failures 0 --max-new-warnings 2 --max-score-drop 5 \
+  --format json --output artifacts/baseline-decision.json
+```
+
+The result is deterministic and exits `1` when a budget is exceeded. A score improvement never becomes a violation. The decision artifact records the exact changed checks and policy limits so a maintainer can review why CI blocked.
+
+### Time-bounded policy exceptions
+
+Exceptions are opt-in and repository-local. They must name the exact check ID, reason, owner, and a future expiry date:
+
+```json
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "id": "migration-license-2026-01",
+      "checkId": "required-file:LICENSE",
+      "reason": "License migration is tracked in the release issue.",
+      "owner": "@maintainer",
+      "expiresAt": "2026-12-31T23:59:59.000Z"
+    }
+  ]
+}
+```
+
+The default verification path reports the file but does not suppress findings. Add `--apply-exceptions` only in a policy that has reviewed the exception file. Matching findings become explicit `skip` checks with `originalStatus`, owner, reason, and expiry preserved in the report. Invalid or expired entries remain blocking policy findings.
+
+### Maintenance ledger
+
+When a project needs an auditable sequence of maintenance decisions, record report summaries in a chained JSONL ledger:
+
+```bash
+contrib-proof ledger --root . --record artifacts/contrib-proof/report.json \
+  --ledger-path records/contrib-proof.jsonl --format json
+contrib-proof ledger --root . --ledger-path records/contrib-proof.jsonl --format markdown
+```
+
+Ledger entries contain no source contents or finding messages. Each entry commits to the previous entry hash and its own canonical payload. Verification is read-only; appending refuses to continue after a tampering or truncation error.
+
+### Environment doctor
+
+Before diagnosing a failed CI run, use the read-only doctor to separate repository findings from runtime and checkout problems:
+
+```bash
+contrib-proof doctor --root . --format markdown
+contrib-proof doctor --root . --format json --output artifacts/doctor.json
+```
+
+It checks the Node runtime, exact Git root, shallow-history state, configuration validity, and configured executable availability without executing project commands.
+
+### Offline proof verification
+
+`proof` creates a manifest that commits to the canonical report and every small evidence file used by that report. `proof-verify` recalculates those hashes, validates the report contract, rejects unsafe paths, and reads only the referenced files:
+
+```bash
+contrib-proof proof --root . --execute --bundle artifacts/contrib-proof
+contrib-proof proof-verify artifacts/contrib-proof --root . --format json
+```
+
+The verifier is an integrity check, not a signature or identity system. A copied bundle can prove that its referenced evidence has not changed relative to the recorded hashes; it cannot prove who produced it.
+
+### Declarative fixture contracts
+
+Projects can keep a small regression corpus in `.contrib-proof-fixtures.json`. Each case names a repository-relative fixture root and asserts a resulting status plus required or forbidden check IDs:
+
+```json
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "healthy",
+      "root": "test/fixtures/healthy",
+      "execute": true,
+      "expected": {
+        "status": "pass",
+        "requiredChecks": ["command:smoke"],
+        "forbiddenChecks": ["command:failing"]
+      }
+    }
+  ]
+}
+```
+
+The CLI honors the case's `execute` setting when `--execute` is supplied. The MCP server deliberately forces fixture runs to `execute: false`, so an agent cannot turn a fixture manifest into an arbitrary project-command runner. Use fixture suites to lock in policy behavior, accepted failures, and future check-ID compatibility.
+
 ## GitHub Action
 
 Add this workflow after publishing or vendoring the action:
@@ -225,13 +352,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: rofghh410-web/contrib-proof@v0.5.0
+      - uses: rofghh410-web/contrib-proof@v0.8.0
         with:
           execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
           diff: "true"
           gate: "true"
           require-review: "true"
           annotations: "true"
+          exceptions-path: .contrib-proof-exceptions.json
+          apply-exceptions: "false"
+          record-ledger: "false"
           format: markdown
 ```
 
@@ -239,9 +369,15 @@ The action is read-only by default. The example executes configured commands onl
 
 `annotations: "true"` is an explicit opt-in for GitHub workflow commands. It turns failing checks, review findings, and gate violations into bounded `error`/`warning` annotations attached to safe relative evidence paths when line information is available. Titles and messages are escaped before emission, and the report file remains machine-readable. Leave it disabled when a workflow does not want annotations.
 
+To run the release checklist in a trusted push job, set `release: "true"` and provide `since: v0.5.0` (or another fetched Git ref). Release mode is read-only and does not create tags or publish assets.
+
+To record a report in the maintenance ledger, use `format: "json"`, set `record-ledger: "true"`, and optionally change `ledger-path`. The Action validates the report before appending and treats a broken ledger as a failed step.
+
+To run a fixture contract suite in a trusted regression job, set `fixtures: "true"` and optionally provide `fixtures-path`. Fixture mode cannot be combined with gate, release, or ledger recording; it produces a standalone suite result and never grants write access.
+
 ## Read-only MCP server
 
-Coding agents can inspect the repository through six read-only tools:
+Coding agents can inspect the repository through twelve read-only tools:
 
 ```bash
 contrib-proof mcp --root .
@@ -253,6 +389,14 @@ contrib-proof mcp --root .
 - `repo_plan` — return prioritized remediation items.
 - `repo_review` — return the change-risk and test-evidence packet for a supplied base ref.
 - `repo_gate` — return the deterministic merge-gate decision for a supplied base ref.
+- `repo_release` — return release-readiness evidence for a supplied Git base ref and optional version.
+- `repo_doctor` — diagnose runtime, Git checkout, configuration, and executable availability without running project commands.
+- `repo_ledger` — verify an append-only maintenance ledger without modifying it.
+- `repo_baseline` — evaluate two saved reports against a regression budget; paths must remain inside the repository root.
+- `repo_proof_verify` — verify a repository-local proof bundle and all referenced evidence hashes.
+- `repo_fixtures` — evaluate the repository's fixture contract without executing project commands.
+
+`repo_verify`, `repo_diff`, `repo_review`, `repo_gate`, `repo_plan`, and `repo_release` accept `applyExceptions` plus an optional `exceptionsPath`. Exceptions are never applied unless the client explicitly requests them.
 
 The server accepts newline-delimited JSON-RPC messages over stdin/stdout. It has no write tool, no network tool, and no shell execution path.
 
@@ -273,13 +417,13 @@ The adapter sends a redacted report, not the whole checkout. It instructs the mo
 2. **Human authority.** The tool recommends; maintainers decide whether a change is safe or acceptable.
 3. **Offline first.** Core verification requires no API key and no network.
 4. **Least privilege.** The default GitHub workflow asks for `contents: read`; publishing is a separate concern.
-5. **Reproducibility.** A proof manifest hashes the report and the evidence files that produced it.
+5. **Reproducibility.** Reports record their execution context, and proof manifests hash the report and evidence files that produced it.
 6. **Provider neutral.** The core does not depend on a particular model or hosted service.
 7. **Honest scope.** A heuristic is labelled as a signal, not promoted to a correctness theorem.
 
 ## Project status
 
-ContribProof is an early but functioning 0.5 release. The current release is intentionally dependency-free and focuses on evidence-backed contributor paths, change review, deterministic CI gates, and opt-in GitHub Checks annotations. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including language adapters, stronger isolated execution, release-readiness evidence, and evaluated model explanations.
+ContribProof is a functioning 0.8 release. The current release remains dependency-free and adds a reproducibility layer: a shared verification engine, execution-context evidence, offline proof verification, and declarative fixture contracts while retaining the maintainer control plane from 0.7. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including stronger process isolation, language adapters, issue-intake evidence, and evaluated model explanations.
 
 ## Contributing
 

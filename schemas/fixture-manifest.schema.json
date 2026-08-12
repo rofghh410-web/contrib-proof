@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/fixture-manifest.schema.json",
+  "title": "ContribProof fixture manifest",
+  "type": "object",
+  "required": ["version", "cases"],
+  "properties": {
+    "version": { "const": 1 },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "root", "expected"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "root": { "type": "string", "minLength": 1 },
+          "execute": { "type": "boolean" },
+          "expected": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": { "enum": ["pass", "needs-attention", "fail"] },
+              "requiredChecks": { "type": "array", "items": { "type": "string" } },
+              "requiredPrefixes": { "type": "array", "items": { "type": "string" } },
+              "forbiddenChecks": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

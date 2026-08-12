@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/proof-manifest.schema.json",
+  "title": "ContribProof proof manifest",
+  "type": "object",
+  "required": ["schemaVersion", "algorithm", "reportHash", "evidenceHash", "bundleHash", "files"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "algorithm": { "const": "sha256" },
+    "reportHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidenceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bundleHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "bytes", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

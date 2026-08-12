@@ -1,20 +1,27 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { buildChecks } = require("./checks");
 const { compareReports, formatComparisonMarkdown } = require("./compare");
+const { evaluateBaseline, formatBaselineMarkdown } = require("./baseline");
 const { loadConfig, writeDefaultConfig } = require("./config");
-const { getChangedFiles, getDiffPatch } = require("./git");
-const { analyzeImpact, buildGraph } = require("./graph");
-const { buildInventory } = require("./inventory");
+const { buildVerificationReport } = require("./engine");
 const { startMcpServer } = require("./mcp-server");
 const { explainReport } = require("./openai");
 const { buildRemediationPlan, formatPlanMarkdown } = require("./plan");
-const { createProofManifest, writeProofBundle } = require("./proof");
-const { createReport, formatReport, writeReport } = require("./report");
-const { evaluateGate } = require("./gate");
-const { buildReviewPacket } = require("./review");
-const { formatValidation, validateGate, validatePlan, validateReport } = require("./validate");
+const { createProofManifest, formatProofVerificationMarkdown, verifyProofBundle, writeProofBundle } = require("./proof");
+const { formatReport, writeReport } = require("./report");
+const { formatValidation, validateBaseline, validateDoctor, validateExceptions, validateFixtureSuite, validateGate, validatePlan, validateProofManifest, validateProofVerification, validateRelease, validateReport } = require("./validate");
 const { formatGithubAnnotations } = require("./annotations");
+const { appendHistory, DEFAULT_HISTORY_PATH, formatHistoryMarkdown, readHistory, summarizeHistory } = require("./history");
+const { buildDoctorReport, formatDoctorMarkdown } = require("./doctor");
+const { DEFAULT_EXCEPTIONS_PATH } = require("./exceptions");
+const { appendLedger, DEFAULT_LEDGER_PATH, formatLedgerMarkdown, verifyLedger } = require("./ledger");
+const { DEFAULT_FIXTURE_MANIFEST, formatFixtureSuiteMarkdown, runFixtureSuite } = require("./fixtures");
+
+function parseNonNegativeInteger(value, flag) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${flag} requires a non-negative integer`);
+  return parsed;
+}
 
 function usage() {
   return `ContribProof — evidence-first contributor-path verification
@@ -23,11 +30,18 @@ Usage:
   contrib-proof init [--root PATH] [--force]
   contrib-proof verify [--root PATH] [--execute] [--diff] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--strict] [--github-annotations]
   contrib-proof proof [same options as verify; writes a complete proof bundle]
+  contrib-proof proof-verify BUNDLE [--root PATH] [--format markdown|json] [--output PATH]
   contrib-proof review [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--github-annotations]
   contrib-proof gate [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--max-risk LEVEL] [--require-review] [--fail-on-warnings] [--github-annotations]
+  contrib-proof release [--root PATH] [--since REF] [--version VERSION] [--format FORMAT] [--output PATH] [--bundle PATH]
+  contrib-proof history [--root PATH] [--record REPORT.json] [--history-path PATH] [--format markdown|json] [--output PATH]
+  contrib-proof ledger [--root PATH] [--record REPORT.json] [--ledger-path PATH] [--format markdown|json] [--output PATH]
+  contrib-proof doctor [--root PATH] [--format markdown|json] [--output PATH]
+  contrib-proof fixtures [--root PATH] [--fixtures-path PATH] [--execute] [--format markdown|json] [--output PATH]
   contrib-proof compare BASELINE.json CURRENT.json [--format FORMAT] [--output PATH] [--strict]
+  contrib-proof baseline BASELINE.json CURRENT.json [--max-new-failures N] [--max-new-warnings N] [--max-score-drop N] [--format markdown|json] [--output PATH]
   contrib-proof plan REPORT.json [--format markdown|json] [--output PATH]
-  contrib-proof validate ARTIFACT.json [--kind report|plan|gate] [--format markdown|json] [--output PATH]
+  contrib-proof validate ARTIFACT.json [--kind report|plan|gate|release|baseline|doctor|exceptions|fixtures|proof-manifest|proof-verification] [--format markdown|json] [--output PATH]
   contrib-proof mcp [--root PATH]
   contrib-proof explain REPORT.json [--model MODEL]
 
@@ -52,15 +66,28 @@ function parseArgs(argv) {
     force: false,
     reportPath: null,
     inputPath: null,
+    rootExplicit: false,
     kind: "report",
     reportPaths: [],
     model: undefined,
     bundle: null,
     githubAnnotations: false,
+    since: null,
+    version: null,
+    recordPath: null,
+    historyPath: DEFAULT_HISTORY_PATH,
+    ledgerPath: DEFAULT_LEDGER_PATH,
+    exceptionsPath: DEFAULT_EXCEPTIONS_PATH,
+    fixturesPath: DEFAULT_FIXTURE_MANIFEST,
+    applyExceptions: false,
+    baselinePolicy: {},
     gateOverrides: {}
   };
   let index = 0;
-  if (argv[0] && !argv[0].startsWith("-")) {
+  if (argv[0] === "--version" && argv.length === 1) {
+    options.command = "version";
+    index = 1;
+  } else if (argv[0] && !argv[0].startsWith("-")) {
     options.command = argv[0];
     index = 1;
   }
@@ -71,6 +98,7 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === "--root") {
       options.root = path.resolve(argv[index + 1] || "");
+      options.rootExplicit = true;
       index += 2;
     } else if (arg === "--execute") {
       options.execute = true;
@@ -80,6 +108,10 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === "--base") {
       options.base = argv[index + 1] || null;
+      options.includeDiff = true;
+      index += 2;
+    } else if (arg === "--since") {
+      options.since = argv[index + 1] || null;
       options.includeDiff = true;
       index += 2;
     } else if (arg === "--format") {
@@ -112,13 +144,43 @@ function parseArgs(argv) {
     } else if (arg === "--model") {
       options.model = argv[index + 1] || undefined;
       index += 2;
+    } else if (arg === "--version") {
+      options.version = argv[index + 1] || null;
+      index += 2;
+    } else if (arg === "--record") {
+      options.recordPath = path.resolve(argv[index + 1] || "");
+      index += 2;
+    } else if (arg === "--history-path") {
+      options.historyPath = argv[index + 1] || DEFAULT_HISTORY_PATH;
+      index += 2;
+    } else if (arg === "--ledger-path") {
+      options.ledgerPath = argv[index + 1] || DEFAULT_LEDGER_PATH;
+      index += 2;
+    } else if (arg === "--exceptions-path") {
+      options.exceptionsPath = argv[index + 1] || DEFAULT_EXCEPTIONS_PATH;
+      index += 2;
+    } else if (arg === "--fixtures-path") {
+      options.fixturesPath = argv[index + 1] || DEFAULT_FIXTURE_MANIFEST;
+      index += 2;
+    } else if (arg === "--apply-exceptions") {
+      options.applyExceptions = true;
+      index += 1;
+    } else if (arg === "--max-new-failures") {
+      options.baselinePolicy.maxNewFailures = parseNonNegativeInteger(argv[index + 1], arg);
+      index += 2;
+    } else if (arg === "--max-new-warnings") {
+      options.baselinePolicy.maxNewWarnings = parseNonNegativeInteger(argv[index + 1], arg);
+      index += 2;
+    } else if (arg === "--max-score-drop") {
+      options.baselinePolicy.maxScoreDrop = parseNonNegativeInteger(argv[index + 1], arg);
+      index += 2;
     } else if (arg === "--kind") {
       options.kind = argv[index + 1] || "report";
       index += 2;
-    } else if (options.command === "compare" && !arg.startsWith("-") && options.reportPaths.length < 2) {
+    } else if ((options.command === "compare" || options.command === "baseline") && !arg.startsWith("-") && options.reportPaths.length < 2) {
       options.reportPaths.push(path.resolve(arg));
       index += 1;
-    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate") && !arg.startsWith("-")) {
+    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate" || options.command === "proof-verify") && !arg.startsWith("-")) {
       options.inputPath = path.resolve(arg);
       options.reportPath = options.inputPath;
       index += 1;
@@ -131,7 +193,8 @@ function parseArgs(argv) {
 
 function exitCodeFor(report, strict) {
   if (report.gate) return report.gate.passed ? 0 : 1;
-  return report.summary.fail > 0 || (strict && report.summary.warn > 0) ? 1 : 0;
+  const releaseBlocked = report.release?.summary?.fail > 0 || (strict && report.release?.summary?.warn > 0);
+  return report.summary.fail > 0 || (strict && report.summary.warn > 0) || releaseBlocked ? 1 : 0;
 }
 
 async function run(argv) {
@@ -141,7 +204,7 @@ async function run(argv) {
     return;
   }
   if (options.command === "--version" || options.command === "version") {
-    console.log("0.5.0");
+    console.log("0.8.0");
     return;
   }
   if (options.command === "init") {
@@ -151,6 +214,33 @@ async function run(argv) {
   }
   if (options.command === "mcp") {
     await startMcpServer(path.resolve(options.root));
+    return;
+  }
+  if (options.command === "doctor") {
+    const doctor = buildDoctorReport(path.resolve(options.root));
+    const content = options.format === "json" ? `${JSON.stringify(doctor, null, 2)}\n` : formatDoctorMarkdown(doctor);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    process.exitCode = doctor.summary.fail > 0 || (options.strict && doctor.summary.warn > 0) ? 1 : 0;
+    return;
+  }
+  if (options.command === "fixtures") {
+    const root = path.resolve(options.root);
+    if (!fs.existsSync(root)) throw new Error(`root does not exist: ${root}`);
+    const suite = runFixtureSuite(root, options.fixturesPath, { execute: options.execute, applyExceptions: options.applyExceptions, exceptionsPath: options.exceptionsPath });
+    const content = options.format === "json" ? `${JSON.stringify(suite, null, 2)}\n` : formatFixtureSuiteMarkdown(suite);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    process.exitCode = suite.valid ? 0 : 1;
+    return;
+  }
+  if (options.command === "proof-verify") {
+    if (!options.inputPath) throw new Error("proof-verify requires a bundle directory");
+    const verification = verifyProofBundle(options.inputPath, options.rootExplicit ? path.resolve(options.root) : null);
+    const content = options.format === "json" ? `${JSON.stringify(verification, null, 2)}\n` : formatProofVerificationMarkdown(verification);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    process.exitCode = verification.valid ? 0 : 1;
     return;
   }
   if (options.command === "explain") {
@@ -173,13 +263,57 @@ async function run(argv) {
   if (options.command === "validate") {
     if (!options.inputPath) throw new Error("validate requires a JSON artifact path");
     const artifact = JSON.parse(fs.readFileSync(options.inputPath, "utf8"));
-    const result = options.kind === "plan" ? validatePlan(artifact) : (options.kind === "gate" ? validateGate(artifact) : validateReport(artifact));
+    let result;
+    if (options.kind === "plan") result = validatePlan(artifact);
+    else if (options.kind === "gate") result = validateGate(artifact);
+    else if (options.kind === "release") result = validateRelease(artifact);
+    else if (options.kind === "baseline") result = validateBaseline(artifact);
+    else if (options.kind === "doctor") result = validateDoctor(artifact);
+    else if (options.kind === "exceptions") result = validateExceptions(artifact);
+    else if (options.kind === "fixtures") result = validateFixtureSuite(artifact);
+    else if (options.kind === "proof-manifest") result = validateProofManifest(artifact);
+    else if (options.kind === "proof-verification") result = validateProofVerification(artifact);
+    else result = validateReport(artifact);
     const content = options.format === "json"
       ? `${JSON.stringify(result, null, 2)}\n`
       : formatValidation(result);
     if (options.output) writeReport(options.output, content);
     else process.stdout.write(content);
     if (!result.valid) process.exitCode = 1;
+    return;
+  }
+  if (options.command === "history") {
+    const root = path.resolve(options.root);
+    if (options.recordPath) {
+      const report = JSON.parse(fs.readFileSync(options.recordPath, "utf8"));
+      const validation = validateReport(report);
+      if (!validation.valid) throw new Error(`cannot record invalid report: ${validation.errors.join("; ")}`);
+      appendHistory(root, report, options.historyPath);
+    }
+    const history = readHistory(root, options.historyPath);
+    const summary = summarizeHistory(history.entries);
+    const content = options.format === "json"
+      ? `${JSON.stringify({ ...summary, path: options.historyPath, errors: history.errors }, null, 2)}\n`
+      : formatHistoryMarkdown(summary);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    if (history.errors.length) process.exitCode = 1;
+    return;
+  }
+  if (options.command === "ledger") {
+    const root = path.resolve(options.root);
+    if (options.recordPath) {
+      const report = JSON.parse(fs.readFileSync(options.recordPath, "utf8"));
+      const validation = validateReport(report);
+      if (!validation.valid) throw new Error(`cannot record invalid report: ${validation.errors.join("; ")}`);
+      appendLedger(root, report, options.ledgerPath);
+    }
+    const verification = verifyLedger(root, options.ledgerPath);
+    const result = { ...verification, path: options.ledgerPath };
+    const content = options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : formatLedgerMarkdown(result);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    if (!verification.valid) process.exitCode = 1;
     return;
   }
   if (options.command === "compare") {
@@ -195,62 +329,52 @@ async function run(argv) {
     process.exitCode = comparison.regression || (options.strict && comparison.newlyWarning.length > 0) ? 1 : 0;
     return;
   }
-  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "plan" && options.command !== "validate") {
+  if (options.command === "baseline") {
+    if (options.reportPaths.length !== 2) throw new Error("baseline requires BASELINE.json and CURRENT.json");
+    const baseline = JSON.parse(fs.readFileSync(options.reportPaths[0], "utf8"));
+    const current = JSON.parse(fs.readFileSync(options.reportPaths[1], "utf8"));
+    const baselineValidation = validateReport(baseline);
+    const currentValidation = validateReport(current);
+    if (!baselineValidation.valid || !currentValidation.valid) throw new Error("baseline and current artifacts must both be valid reports");
+    const decision = evaluateBaseline(baseline, current, options.baselinePolicy);
+    const content = options.format === "markdown" || options.format === "md"
+      ? formatBaselineMarkdown(decision)
+      : `${JSON.stringify(decision, null, 2)}\n`;
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    process.exitCode = decision.passed ? 0 : 1;
+    return;
+  }
+  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "release" && options.command !== "plan" && options.command !== "validate" && options.command !== "history" && options.command !== "ledger" && options.command !== "doctor" && options.command !== "baseline" && options.command !== "proof-verify" && options.command !== "fixtures") {
     throw new Error(`unknown command: ${options.command}\n\n${usage()}`);
   }
-  if (options.command === "diff" || options.command === "proof" || options.command === "review" || options.command === "gate") options.includeDiff = true;
+  if (options.command === "diff" || options.command === "proof" || options.command === "review" || options.command === "gate" || options.command === "release") options.includeDiff = true;
   if (options.command === "proof" && !options.bundle) options.bundle = path.join(options.root, "artifacts", "contrib-proof");
+  if (options.command === "release" && !options.bundle) options.bundle = null;
   if (options.githubAnnotations && !options.output) {
     throw new Error("--github-annotations requires --output so the report stays machine-readable");
   }
 
   const root = path.resolve(options.root);
   if (!fs.existsSync(root)) throw new Error(`root does not exist: ${root}`);
-  const configInfo = loadConfig(root);
-  const inventory = buildInventory(root);
-  const checks = buildChecks(root, configInfo, {
+  const report = buildVerificationReport(root, {
     execute: options.execute,
     includeDiff: options.includeDiff,
-    base: options.base,
-    inventory
-  });
-  let impact = null;
-  let diff = null;
-  let patchResult = null;
-  let review = null;
-  if (options.includeDiff) {
-    diff = getChangedFiles(root, options.base);
-    patchResult = getDiffPatch(root, options.base);
-    if (diff.ok) {
-      impact = analyzeImpact(root, diff.files.map((file) => file.path), buildGraph(root, inventory));
-    }
-    review = buildReviewPacket({
-      root,
-      base: options.base,
-      changedFiles: diff.ok && patchResult.ok ? diff.files : null,
-      patch: diff.ok && patchResult.ok ? patchResult.patch : null,
-      inventory,
-      impact
-    });
-  }
-  const report = createReport({
-    root,
-    checks,
-    configPath: configInfo.path,
-    mode: options.command === "gate" ? "gate" : (options.command === "review" ? "review" : (options.includeDiff ? "verify+diff" : "verify")),
+    includeGate: options.command === "gate",
+    includeRelease: options.command === "release",
+    includeReview: options.command === "review",
+    mode: options.command === "gate" ? "gate" : (options.command === "review" ? "review" : (options.command === "release" ? "release" : (options.includeDiff ? "verify+diff" : "verify"))),
+    base: options.since || options.base,
+    version: options.version,
     strict: options.strict,
-    inventory,
-    impact,
-    review
-  });
-  report.plan = buildRemediationPlan(report);
-  if (options.command === "gate") {
-    report.gate = evaluateGate(report, {
-      ...configInfo.config.gatePolicy,
+    applyExceptions: options.applyExceptions,
+    exceptionsPath: options.exceptionsPath,
+    gatePolicy: options.command === "gate" ? {
+      ...loadConfig(root).config.gatePolicy,
       ...options.gateOverrides,
       ...(options.strict ? { failOnWarnings: true } : {})
-    });
-  }
+    } : undefined
+  });
   const proof = createProofManifest(root, report);
   report.proof = proof;
   if (options.bundle) writeProofBundle(options.bundle, report, proof);

@@ -88,6 +88,10 @@ function buildGithubAnnotations(report, { maxAnnotations = DEFAULT_MAX_ANNOTATIO
   for (const violation of report?.gate?.violations || []) {
     append(violation, violation.level === "warning" ? "warning" : "error");
   }
+  for (const check of report?.release?.checks || []) {
+    if (check?.status === "fail") append(check, "error");
+    else if (check?.status === "warn") append(check, "warning");
+  }
 
   return { lines, truncated };
 }

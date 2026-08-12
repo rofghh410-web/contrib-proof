@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/ledger-entry.schema.json",
+  "title": "ContribProof maintenance ledger entry",
+  "type": "object",
+  "required": ["schemaVersion", "recordedAt", "actor", "previousHash", "mode", "status", "counts", "entryHash"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "actor": { "type": "string", "minLength": 1 },
+    "previousHash": { "type": ["string", "null"] },
+    "mode": { "type": "string" },
+    "status": { "type": "string" },
+    "score": { "type": ["integer", "null"] },
+    "counts": { "type": "object" },
+    "gate": { "type": ["object", "null"] },
+    "release": { "type": ["object", "null"] },
+    "proofBundleHash": { "type": ["string", "null"] },
+    "entryHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

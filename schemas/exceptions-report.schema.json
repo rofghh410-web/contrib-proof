@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/exceptions-report.schema.json",
+  "title": "ContribProof policy exception report summary",
+  "type": "object",
+  "required": ["path", "exists", "total", "active", "expired", "invalid", "errors", "exceptions", "applied"],
+  "properties": {
+    "path": { "type": "string" },
+    "exists": { "type": "boolean" },
+    "total": { "type": "integer", "minimum": 0 },
+    "active": { "type": "integer", "minimum": 0 },
+    "expired": { "type": "integer", "minimum": 0 },
+    "invalid": { "type": "integer", "minimum": 0 },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "applied": { "type": "boolean" },
+    "exceptions": { "type": "array" }
+  }
+}

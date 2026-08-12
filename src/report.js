@@ -3,7 +3,7 @@ const path = require("node:path");
 const { formatHtml } = require("./html");
 
 const TOOL_NAME = "ContribProof";
-const TOOL_VERSION = "0.5.0";
+const TOOL_VERSION = "0.8.0";
 
 function summarize(checks, strict = false) {
   const counts = { pass: 0, warn: 0, fail: 0, skip: 0 };
@@ -18,7 +18,7 @@ function summarize(checks, strict = false) {
   };
 }
 
-function createReport({ root, checks, configPath, mode = "verify", strict = false, inventory = null, impact = null, review = null, proof = null }) {
+function createReport({ root, checks, configPath, mode = "verify", strict = false, inventory = null, impact = null, review = null, release = null, context = null, exceptions = null, proof = null }) {
   return {
     schemaVersion: 1,
     tool: { name: TOOL_NAME, version: TOOL_VERSION },
@@ -31,6 +31,9 @@ function createReport({ root, checks, configPath, mode = "verify", strict = fals
     inventory,
     impact,
     review,
+    release,
+    context,
+    exceptions,
     proof
   };
 }
@@ -56,8 +59,34 @@ function formatMarkdown(report) {
   if (report.inventory) {
     lines.push("## Repository inventory", "", `Indexed **${report.inventory.fileCount}** files across ${Object.keys(report.inventory.languageCounts || {}).length} language or file categories.`, "");
   }
+  if (report.context) {
+    const git = report.context.git || {};
+    const runtime = report.context.runtime || {};
+    const configuration = report.context.configuration || {};
+    const options = report.context.options || {};
+    const configurationLabel = `\`${configuration.path || "defaults"}\``;
+    const configurationHash = configuration.sha256 ? ` (SHA-256 \`${configuration.sha256}\`)` : "";
+    lines.push("## Execution context", "", `Runtime: **Node ${runtime.node || "unknown"}** on **${runtime.platform || "unknown"}/${runtime.arch || "unknown"}**.`, `Git: **${git.commit || "unavailable"}** on **${git.branch || "detached/unavailable"}**; dirty: **${git.dirty === null || git.dirty === undefined ? "unknown" : git.dirty ? "yes" : "no"}**; shallow: **${git.shallow === null || git.shallow === undefined ? "unknown" : git.shallow ? "yes" : "no"}**.`, `Configuration: ${configurationLabel}${configurationHash}.`, `Options: execute **${options.execute ? "on" : "off"}**, diff **${options.includeDiff ? "on" : "off"}**, base **${options.base || "none"}**, exceptions **${options.applyExceptions ? "applied" : "not applied"}**.`, "");
+  }
   if (report.impact) {
     lines.push("## Change impact", "", `The static graph considered **${report.impact.importEdgesConsidered}** import edges and identified **${report.impact.impactedFiles.length}** potentially impacted files.`, "");
+  }
+  if (report.release) {
+    if (!report.release.available) {
+      lines.push("## Release readiness", "", `Release readiness unavailable: ${report.release.reason}`, "");
+    } else {
+      lines.push("## Release readiness", "", `Release **${report.release.version || "unspecified"}** is **${report.release.summary.status}** at **${report.release.summary.score}/100**.`, `The range contains **${report.release.commits.length}** non-merge commit(s) and **${report.release.changes.files}** changed file(s).`, "");
+      for (const check of report.release.checks) {
+        lines.push(`### ${statusIcon(check.status)} ${check.title}`, "", check.message);
+        if (check.remediation) lines.push("", `**Next step:** ${check.remediation}`);
+        lines.push("");
+      }
+      if (report.release.recommendations?.length) lines.push("**Recommendations:**", "", ...report.release.recommendations.map((item) => `- ${item}`), "");
+    }
+  }
+  if (report.exceptions) {
+    lines.push("## Policy exceptions", "", `Exception processing: **${report.exceptions.applied ? "enabled" : "disabled"}**.`, `Active: **${report.exceptions.active}**, expired: **${report.exceptions.expired}**, invalid: **${report.exceptions.invalid}**.`, "");
+    if (report.exceptions.applied && report.exceptions.active) lines.push("Active exceptions can convert matching findings to explicit skipped checks until their expiry date; the exception policy check remains blocking if the file is invalid or expired.", "");
   }
   if (report.gate) {
     lines.push("## Merge gate", "", `Gate status: **${report.gate.status}**.`, `Configured maximum risk: **${report.gate.policy.maxRisk}**.`, `Violations: **${report.gate.summary.violations}**.`, "");
@@ -148,6 +177,24 @@ function formatSarif(report) {
       ruleId: violation.id,
       level: violation.level === "warning" ? "warning" : "error",
       message: { text: `${violation.title}: ${violation.message}` }
+    };
+    if (evidence && evidence.path) {
+      result.locations = [{
+        physicalLocation: {
+          artifactLocation: { uri: evidence.path },
+          region: evidence.line ? { startLine: evidence.line } : undefined
+        }
+      }];
+    }
+    results.push(result);
+  }
+  for (const check of report.release?.checks || []) {
+    if (check.status !== "fail" && check.status !== "warn") continue;
+    const evidence = check.evidence && check.evidence[0];
+    const result = {
+      ruleId: check.id,
+      level: check.status === "fail" ? "error" : "warning",
+      message: { text: `${check.title}: ${check.message}` }
     };
     if (evidence && evidence.path) {
       result.locations = [{

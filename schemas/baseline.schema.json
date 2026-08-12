@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/baseline.schema.json",
+  "title": "ContribProof baseline decision",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "status", "passed", "policy", "summary", "violations"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "baseline-decision" },
+    "status": { "enum": ["pass", "fail"] },
+    "passed": { "type": "boolean" },
+    "policy": {
+      "type": "object",
+      "required": ["maxNewFailures", "maxNewWarnings", "maxScoreDrop"],
+      "properties": {
+        "maxNewFailures": { "type": "integer", "minimum": 0 },
+        "maxNewWarnings": { "type": "integer", "minimum": 0 },
+        "maxScoreDrop": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "baseline": { "type": "object" },
+    "current": { "type": "object" },
+    "scoreDrop": { "type": ["integer", "null"] },
+    "summary": {
+      "type": "object",
+      "required": ["changed", "newlyFailing", "newlyWarning", "resolved", "violations"],
+      "properties": {
+        "changed": { "type": "integer", "minimum": 0 },
+        "newlyFailing": { "type": "integer", "minimum": 0 },
+        "newlyWarning": { "type": "integer", "minimum": 0 },
+        "resolved": { "type": "integer", "minimum": 0 },
+        "violations": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "violations": { "type": "array" },
+    "newlyFailing": { "type": "array" },
+    "newlyWarning": { "type": "array" },
+    "resolved": { "type": "array" }
+  }
+}

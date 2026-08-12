@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "healthy-fixture",
+      "root": "test/fixtures/healthy",
+      "execute": true,
+      "expected": {
+        "status": "pass",
+        "requiredChecks": ["command:smoke"],
+        "forbiddenChecks": ["command:failing"]
+      }
+    },
+    {
+      "id": "unhealthy-fixture",
+      "root": "test/fixtures/unhealthy",
+      "execute": true,
+      "expected": {
+        "status": "fail",
+        "requiredChecks": ["required-file:CONTRIBUTING.md", "command:failing"],
+        "requiredPrefixes": ["broken-link:"]
+      }
+    }
+  ]
+}

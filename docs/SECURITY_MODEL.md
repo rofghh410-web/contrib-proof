@@ -22,11 +22,20 @@ ContribProof is designed for repositories that may contain untrusted pull-reques
 | GitHub workflow | Example requests `contents: read` only |
 | Dependency and action inventory | Read-only local signals; no registry resolution or workflow execution |
 | HTML report | Escaped, self-contained output; no external scripts or remote requests |
-| MCP | Six read-only tools; no arbitrary shell or write tool |
+| MCP | Twelve read-only tools; no arbitrary shell or write tool |
 | Merge gate | Consumes deterministic report data; no model approval path and no repository mutation |
 | OpenAI adapter | Opt-in; sends a redacted report only |
 | Model output | Advisory; cannot alter deterministic status or files |
 | GitHub annotations | Disabled by default; enabled only by an explicit Action/CLI flag and escaped before workflow-command emission |
+| Release readiness | Read-only Git and metadata analysis; no tag, publish, or command-execution path |
+| History store | Summary-only JSONL; no source contents, command output, or finding messages |
+| Baseline decision | Consumes only schema-validated saved reports; no repository mutation |
+| Policy exceptions | Disabled by default; exact IDs, required owners/reasons, and future expiry dates |
+| Maintenance ledger | Summary-only chained JSONL; append refuses an invalid existing chain |
+| Doctor | PATH and metadata inspection only; does not execute declared project commands |
+| Proof verification | Recalculates hashes and reads only repository-confined manifest evidence paths |
+| Fixture contracts | Declarative status/check assertions; MCP mode forces configured commands off |
+| Execution context | Records runtime and checkout provenance; does not elevate trust or sign reports |
 
 ## Important limitations
 
@@ -39,6 +48,12 @@ ContribProof is designed for repositories that may contain untrusted pull-reques
 7. The change-review detector only scans added diff lines and uses conservative patterns; it can miss encoded or split secrets and can produce false positives.
 8. The optional model explanation can be wrong. It must never be used as the sole security decision.
 9. GitHub annotations are a presentation channel, not a new finding engine. ContribProof bounds their count, emits only report text, and rejects absolute or parent-traversing evidence paths before attaching locations.
+10. History records are not a source backup or an audit signature. They retain aggregate maintenance signals and a proof-bundle hash, but do not prove who produced the report or preserve every input.
+11. A policy exception is not a security approval. It can suppress one matching finding only when explicitly enabled, and it remains visible with an expiry and owner; expired or malformed entries are blocking.
+12. The maintenance ledger detects accidental or unauthorized content changes after recording, but without a signed trust root it does not prove who wrote an entry.
+13. A baseline budget protects against selected regressions between two reports; it does not prove the baseline itself was correct or that unobserved checks are safe.
+14. Proof verification detects changes relative to a manifest; it is not a digital signature, provenance attestation, or proof of authorship.
+15. Fixture contracts assert selected stable signals and can miss behavior outside their declared check IDs. CLI `--execute` still runs only trusted configurations; MCP fixture runs never execute project commands.
 
 ## PR workflow guidance
 

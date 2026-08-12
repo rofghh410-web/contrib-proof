@@ -5,7 +5,7 @@ type: software
 authors:
   - family-names: "ContribProof contributors"
     given-names: ""
-version: 0.5.0
+version: 0.8.0
 date-released: 2026-08-12
 license: MIT
 repository-code: https://github.com/rofghh410-web/contrib-proof

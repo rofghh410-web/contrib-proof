@@ -1,6 +1,6 @@
 {
   "name": "contrib-proof",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "description": "Evidence-first contributor-path verification, change review, and deterministic CI gates for open-source repositories.",
   "type": "commonjs",
   "main": "src/index.js",
@@ -23,6 +23,7 @@
     "test": "node --test",
     "verify": "node ./bin/contrib-proof.js verify --root . --execute --format markdown",
     "verify:json": "node ./bin/contrib-proof.js verify --root . --execute --format json --output artifacts/self-check.json",
+    "fixtures": "node ./bin/contrib-proof.js fixtures --root . --execute --format markdown",
     "gate": "node ./bin/contrib-proof.js gate --root . --execute --format markdown",
     "plan": "node ./bin/contrib-proof.js plan artifacts/self-check.json --format markdown",
     "lint": "node scripts/lint.js",

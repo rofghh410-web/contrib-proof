@@ -42,16 +42,47 @@ The project is deliberately staged around real maintainer feedback rather than f
 
 - [x] configurable deterministic merge gate with policy-driven exit codes and evidence;
 - [ ] issue intake evidence packet;
-- [ ] release-readiness report from merged changes;
-- [ ] historical report store with privacy-preserving aggregate metrics;
+- [x] release-readiness report from merged changes;
+- [x] historical report store with privacy-preserving aggregate metrics;
 - [ ] evaluation corpus of false-positive and false-negative cases.
 
 ## 0.5 — CI feedback
 
 - [x] opt-in GitHub Checks annotations with escaped, bounded workflow commands;
-- [ ] release-readiness report from merged changes;
-- [ ] historical report store with privacy-preserving aggregate metrics;
+- [x] release-readiness report from merged changes;
+- [x] historical report store with privacy-preserving aggregate metrics;
 - [ ] evaluation corpus of false-positive and false-negative cases.
+
+## 0.6 — Release evidence
+
+- [x] release-readiness CLI, MCP, Action, SARIF, HTML, and proof-bundle outputs;
+- [x] version, changelog, test-signal, documentation-signal, and high-risk review checks;
+- [x] privacy-preserving JSONL history records and trend summaries;
+- [x] nested report validation and published release schema;
+- [ ] fixture corpus for release regressions and accepted exceptions;
+- [ ] issue-intake evidence packet.
+
+## 0.7 — Maintainer control plane
+
+- [x] deterministic baseline regression budgets with JSON/Markdown decisions;
+- [x] exact, time-bounded policy exceptions with audit-preserving skips;
+- [x] tamper-evident summary ledger with path confinement and append refusal;
+- [x] read-only doctor diagnostics for runtime and checkout failures;
+- [x] CLI, Action, MCP, HTML, proof, validation, schema, and test integration;
+- [ ] signed ledger attestations with an explicit maintainer trust root;
+- [ ] baseline retention and fixture selection policies for monorepos;
+- [ ] issue-intake evidence packet.
+
+## 0.8 — Reproducible evidence
+
+- [x] shared verification engine for CLI and MCP report construction;
+- [x] execution-context provenance for runtime, Git checkout, configuration, and effective options;
+- [x] offline proof-bundle verification with hash and path-confinement checks;
+- [x] declarative fixture manifests with status and stable check-ID assertions;
+- [x] fixture/proof/context schemas, validators, Action integration, MCP integration, and regression tests;
+- [ ] signed attestations with an explicit maintainer trust root;
+- [ ] isolated fixture checkout runner with configurable network denial;
+- [ ] monorepo fixture selection and baseline retention policies.
 
 ## Non-goals
 

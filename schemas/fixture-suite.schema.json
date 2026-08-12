@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/fixture-suite.schema.json",
+  "title": "ContribProof fixture suite result",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "path", "valid", "summary", "cases", "errors"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "fixture-suite" },
+    "path": { "type": "string" },
+    "valid": { "type": "boolean" },
+    "summary": { "type": "object" },
+    "cases": { "type": "array" },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  }
+}

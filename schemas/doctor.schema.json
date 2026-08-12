@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/doctor.schema.json",
+  "title": "ContribProof doctor report",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "environment", "summary", "checks"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "doctor-report" },
+    "root": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "environment": {
+      "type": "object",
+      "required": ["node", "platform", "arch", "cpuCount"],
+      "properties": {
+        "node": { "type": "string" },
+        "platform": { "type": "string" },
+        "arch": { "type": "string" },
+        "cpuCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "summary": { "type": "object" },
+    "checks": { "type": "array" }
+  }
+}

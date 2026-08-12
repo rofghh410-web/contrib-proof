@@ -21,7 +21,11 @@ function ownerFor(check) {
 }
 
 function buildRemediationPlan(report) {
-  const items = (report.checks || [])
+  const checks = [
+    ...(report.checks || []),
+    ...(report.release?.checks || []).map((check) => ({ ...check, category: check.category || "release-readiness" }))
+  ];
+  const items = checks
     .filter((check) => check.status !== "pass")
     .map((check) => ({
       id: check.id,

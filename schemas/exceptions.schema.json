@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/exceptions.schema.json",
+  "title": "ContribProof policy exceptions",
+  "type": "object",
+  "required": ["version", "exceptions"],
+  "properties": {
+    "version": { "const": 1 },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "checkId", "reason", "owner", "expiresAt"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "checkId": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

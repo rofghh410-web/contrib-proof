@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/proof-verification.schema.json",
+  "title": "ContribProof proof verification result",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "bundle", "valid", "reportValid", "checkedFiles", "errors"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "proof-verification" },
+    "bundle": { "type": "string" },
+    "root": { "type": "string" },
+    "valid": { "type": "boolean" },
+    "reportValid": { "type": "boolean" },
+    "checkedFiles": { "type": "integer", "minimum": 0 },
+    "reportHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidenceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bundleHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  }
+}

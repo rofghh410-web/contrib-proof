@@ -14,8 +14,24 @@ inputs:
     description: Apply the configured deterministic merge-gate policy and use its exit code.
     required: false
     default: "false"
+  release:
+    description: Run release-readiness checks against Git history and repository metadata.
+    required: false
+    default: "false"
+  fixtures:
+    description: Run the declarative fixture contract suite instead of the repository report.
+    required: false
+    default: "false"
+  fixtures-path:
+    description: Repository-relative fixture manifest path.
+    required: false
+    default: .contrib-proof-fixtures.json
   base:
     description: Optional Git base ref for the change policy.
+    required: false
+    default: ""
+  since:
+    description: Optional Git ref for release-readiness comparison. Falls back to base when unset.
     required: false
     default: ""
   format:
@@ -46,6 +62,22 @@ inputs:
     description: Optional output directory for a complete proof bundle.
     required: false
     default: ""
+  exceptions-path:
+    description: Repository-relative JSON policy exception file.
+    required: false
+    default: .contrib-proof-exceptions.json
+  apply-exceptions:
+    description: Apply valid, unexpired exceptions while retaining the original finding status.
+    required: false
+    default: "false"
+  ledger-path:
+    description: Repository-relative append-only maintenance ledger path.
+    required: false
+    default: .contrib-proof-ledger.jsonl
+  record-ledger:
+    description: Record the generated JSON report in the tamper-evident maintenance ledger.
+    required: false
+    default: "false"
 outputs:
   report_path:
     description: Path to the generated report on the runner.
@@ -62,7 +94,11 @@ runs:
         CP_EXECUTE: ${{ inputs.execute }}
         CP_DIFF: ${{ inputs.diff }}
         CP_GATE: ${{ inputs.gate }}
+        CP_RELEASE: ${{ inputs.release }}
+        CP_FIXTURES: ${{ inputs.fixtures }}
+        CP_FIXTURES_PATH: ${{ inputs['fixtures-path'] }}
         CP_BASE: ${{ inputs.base }}
+        CP_SINCE: ${{ inputs.since }}
         CP_FORMAT: ${{ inputs.format }}
         CP_STRICT: ${{ inputs.strict }}
         CP_MAX_RISK: ${{ inputs['max-risk'] }}
@@ -70,26 +106,53 @@ runs:
         CP_FAIL_ON_WARNINGS: ${{ inputs['fail-on-warnings'] }}
         CP_ANNOTATIONS: ${{ inputs.annotations }}
         CP_BUNDLE: ${{ inputs.bundle }}
+        CP_EXCEPTIONS_PATH: ${{ inputs['exceptions-path'] }}
+        CP_APPLY_EXCEPTIONS: ${{ inputs['apply-exceptions'] }}
+        CP_LEDGER_PATH: ${{ inputs['ledger-path'] }}
+        CP_RECORD_LEDGER: ${{ inputs['record-ledger'] }}
       run: |
         set -uo pipefail
         report_path="${RUNNER_TEMP}/contrib-proof-report.${CP_FORMAT}"
-        if [[ "$CP_GATE" == "true" ]]; then
+        if [[ "$CP_FIXTURES" == "true" && ( "$CP_GATE" == "true" || "$CP_RELEASE" == "true" || "$CP_RECORD_LEDGER" == "true" ) ]]; then
+          echo "::error::fixtures mode cannot be combined with release, gate, or record-ledger."
+          exit 2
+        elif [[ "$CP_FIXTURES" == "true" ]]; then
+          args=(fixtures --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path" --fixtures-path "$CP_FIXTURES_PATH")
+        elif [[ "$CP_RELEASE" == "true" ]]; then
+          args=(release --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path")
+        elif [[ "$CP_GATE" == "true" ]]; then
           args=(gate --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path")
         else
           args=(verify --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path")
         fi
         if [[ "$CP_EXECUTE" == "true" ]]; then args+=(--execute); fi
-        if [[ "$CP_DIFF" == "true" ]]; then args+=(--diff); fi
-        if [[ -n "$CP_BASE" ]]; then args+=(--base "$CP_BASE"); fi
-        if [[ "$CP_STRICT" == "true" ]]; then args+=(--strict); fi
-        if [[ -n "$CP_MAX_RISK" ]]; then args+=(--max-risk "$CP_MAX_RISK"); fi
-        if [[ "$CP_REQUIRE_REVIEW" == "true" ]]; then args+=(--require-review); fi
-        if [[ "$CP_FAIL_ON_WARNINGS" == "true" ]]; then args+=(--fail-on-warnings); fi
-        if [[ "$CP_ANNOTATIONS" == "true" ]]; then args+=(--github-annotations); fi
-        if [[ -n "$CP_BUNDLE" ]]; then args+=(--bundle "$CP_BUNDLE"); fi
+        if [[ "$CP_FIXTURES" != "true" ]]; then
+          if [[ "$CP_DIFF" == "true" ]]; then args+=(--diff); fi
+          if [[ -n "$CP_BASE" ]]; then args+=(--base "$CP_BASE"); fi
+          if [[ -n "$CP_SINCE" ]]; then args+=(--since "$CP_SINCE"); fi
+          if [[ "$CP_STRICT" == "true" ]]; then args+=(--strict); fi
+          if [[ -n "$CP_MAX_RISK" ]]; then args+=(--max-risk "$CP_MAX_RISK"); fi
+          if [[ "$CP_REQUIRE_REVIEW" == "true" ]]; then args+=(--require-review); fi
+          if [[ "$CP_FAIL_ON_WARNINGS" == "true" ]]; then args+=(--fail-on-warnings); fi
+          if [[ "$CP_ANNOTATIONS" == "true" ]]; then args+=(--github-annotations); fi
+          if [[ -n "$CP_BUNDLE" ]]; then args+=(--bundle "$CP_BUNDLE"); fi
+        fi
+        if [[ -n "$CP_EXCEPTIONS_PATH" ]]; then args+=(--exceptions-path "$CP_EXCEPTIONS_PATH"); fi
+        if [[ "$CP_APPLY_EXCEPTIONS" == "true" ]]; then args+=(--apply-exceptions); fi
         set +e
         node "$GITHUB_ACTION_PATH/bin/contrib-proof.js" "${args[@]}"
         status=$?
+        if [[ "$CP_RECORD_LEDGER" == "true" ]]; then
+          if [[ "$CP_FORMAT" != "json" ]]; then
+            echo "::error::record-ledger requires format=json so the report can be validated safely."
+            ledger_status=2
+          else
+            ledger_report="${RUNNER_TEMP}/contrib-proof-ledger.json"
+            node "$GITHUB_ACTION_PATH/bin/contrib-proof.js" ledger --root "$GITHUB_WORKSPACE" --record "$report_path" --ledger-path "$CP_LEDGER_PATH" --format json --output "$ledger_report"
+            ledger_status=$?
+          fi
+          if [[ "$status" == "0" && "$ledger_status" != "0" ]]; then status="$ledger_status"; fi
+        fi
         set -e
         if [[ "$CP_FORMAT" == "markdown" && -f "$report_path" ]]; then
           cat "$report_path" >> "$GITHUB_STEP_SUMMARY"

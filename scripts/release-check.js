@@ -22,7 +22,18 @@ const publicTextFiles = [
   "schemas/report.schema.json",
   "schemas/plan.schema.json",
   "schemas/review.schema.json",
-  "schemas/gate.schema.json"
+  "schemas/gate.schema.json",
+  "schemas/release.schema.json",
+  "schemas/baseline.schema.json",
+  "schemas/doctor.schema.json",
+  "schemas/exceptions.schema.json",
+  "schemas/exceptions-report.schema.json",
+  "schemas/ledger-entry.schema.json",
+  "schemas/context.schema.json",
+  "schemas/fixture-manifest.schema.json",
+  "schemas/fixture-suite.schema.json",
+  "schemas/proof-verification.schema.json",
+  "schemas/proof-manifest.schema.json"
 ];
 for (const relative of publicTextFiles) {
   const text = fs.readFileSync(path.join(root, relative), "utf8");
