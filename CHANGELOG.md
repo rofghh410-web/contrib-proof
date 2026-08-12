@@ -2,6 +2,12 @@
 
 All notable changes to ContribProof are documented here.
 
+## 0.8.2 — 2026-08-12
+
+### Fixed
+
+- quoted every user-facing string in the GitHub Action manifest so GitHub's stricter action-manifest YAML parser loads the complete input definition consistently.
+
 ## 0.8.1 — 2026-08-12
 
 Release: [ContribProof v0.8.1](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.8.1)

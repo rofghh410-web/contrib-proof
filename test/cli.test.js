@@ -21,7 +21,7 @@ function runCli(args, cwd = root) {
 test("version flag reports the public release version", () => {
   const result = runCli(["--version"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "0.8.1");
+  assert.equal(result.stdout.trim(), "0.8.2");
 });
 
 test("healthy fixture passes executable verification", () => {
@@ -124,7 +124,7 @@ test("MCP server exposes read-only tools and structured inventory", () => {
   assert.equal(result.status, 0, result.stderr);
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.equal(responses[0].result.protocolVersion, "2024-11-05");
-  assert.equal(responses[0].result.serverInfo.version, "0.8.1");
+  assert.equal(responses[0].result.serverInfo.version, "0.8.2");
   assert.equal(responses[1].result.tools.length, 12);
   assert.ok(responses[2].result.structuredContent.fileCount >= 4);
   assert.ok(Array.isArray(responses[3].result.structuredContent.items));

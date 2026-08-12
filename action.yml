@@ -1,37 +1,37 @@
-name: ContribProof
-description: Run evidence-first contributor-path checks with least privilege.
-author: ContribProof contributors
+name: "ContribProof"
+description: "Run evidence-first contributor-path checks with least privilege."
+author: "ContribProof contributors"
 inputs:
   execute:
-    description: Execute commands declared in .contrib-proof.json.
+    description: "Execute commands declared in .contrib-proof.json."
     required: false
     default: "false"
   diff:
-    description: Analyze changed files against the pull request base.
+    description: "Analyze changed files against the pull request base."
     required: false
     default: "false"
   gate:
-    description: Apply the configured deterministic merge-gate policy and use its exit code.
+    description: "Apply the configured deterministic merge-gate policy and use its exit code."
     required: false
     default: "false"
   release:
-    description: Run release-readiness checks against Git history and repository metadata.
+    description: "Run release-readiness checks against Git history and repository metadata."
     required: false
     default: "false"
   fixtures:
-    description: Run the declarative fixture contract suite instead of the repository report.
+    description: "Run the declarative fixture contract suite instead of the repository report."
     required: false
     default: "false"
   fixtures-path:
-    description: Repository-relative fixture manifest path.
+    description: "Repository-relative fixture manifest path."
     required: false
     default: .contrib-proof-fixtures.json
   base:
-    description: Optional Git base ref for the change policy.
+    description: "Optional Git base ref for the change policy."
     required: false
     default: ""
   since:
-    description: Optional Git ref for release-readiness comparison. Falls back to base when unset.
+    description: "Optional Git ref for release-readiness comparison. Falls back to base when unset."
     required: false
     default: ""
   format:
@@ -39,48 +39,48 @@ inputs:
     required: false
     default: markdown
   strict:
-    description: Treat warnings as failures.
+    description: "Treat warnings as failures."
     required: false
     default: "false"
   max-risk:
-    description: Optional gate risk threshold: routine, elevated, or high.
+    description: "Optional gate risk threshold: routine, elevated, or high."
     required: false
     default: ""
   require-review:
-    description: Require a usable Git diff when gate mode is enabled.
+    description: "Require a usable Git diff when gate mode is enabled."
     required: false
     default: "false"
   fail-on-warnings:
-    description: Make warning checks block gate mode.
+    description: "Make warning checks block gate mode."
     required: false
     default: "false"
   annotations:
-    description: Emit opt-in GitHub workflow annotations for failures and warnings.
+    description: "Emit opt-in GitHub workflow annotations for failures and warnings."
     required: false
     default: "false"
   bundle:
-    description: Optional output directory for a complete proof bundle.
+    description: "Optional output directory for a complete proof bundle."
     required: false
     default: ""
   exceptions-path:
-    description: Repository-relative JSON policy exception file.
+    description: "Repository-relative JSON policy exception file."
     required: false
     default: .contrib-proof-exceptions.json
   apply-exceptions:
-    description: Apply valid, unexpired exceptions while retaining the original finding status.
+    description: "Apply valid, unexpired exceptions while retaining the original finding status."
     required: false
     default: "false"
   ledger-path:
-    description: Repository-relative append-only maintenance ledger path.
+    description: "Repository-relative append-only maintenance ledger path."
     required: false
     default: .contrib-proof-ledger.jsonl
   record-ledger:
-    description: Record the generated JSON report in the tamper-evident maintenance ledger.
+    description: "Record the generated JSON report in the tamper-evident maintenance ledger."
     required: false
     default: "false"
 outputs:
   report_path:
-    description: Path to the generated report on the runner.
+    description: "Path to the generated report on the runner."
     value: ${{ steps.run.outputs.report_path }}
 runs:
   using: composite
