@@ -225,16 +225,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: rofghh410-web/contrib-proof@v0.4.0
+      - uses: rofghh410-web/contrib-proof@v0.5.0
         with:
           execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
           diff: "true"
           gate: "true"
           require-review: "true"
+          annotations: "true"
           format: markdown
 ```
 
 The action is read-only by default. The example executes configured commands only on a trusted `push`; pull requests keep `execute` disabled so fork code is not run as part of the PR evidence job. It writes a report to the runner summary and exposes the generated path as an output. It does not comment on or mutate pull requests.
+
+`annotations: "true"` is an explicit opt-in for GitHub workflow commands. It turns failing checks, review findings, and gate violations into bounded `error`/`warning` annotations attached to safe relative evidence paths when line information is available. Titles and messages are escaped before emission, and the report file remains machine-readable. Leave it disabled when a workflow does not want annotations.
 
 ## Read-only MCP server
 
@@ -276,7 +279,7 @@ The adapter sends a redacted report, not the whole checkout. It instructs the mo
 
 ## Project status
 
-ContribProof is an early but functioning 0.4 release. The current release is intentionally dependency-free and focuses on evidence-backed contributor paths, change review, and deterministic CI gates. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including language adapters, stronger isolated execution, GitHub Checks annotations, and evaluated model explanations.
+ContribProof is an early but functioning 0.5 release. The current release is intentionally dependency-free and focuses on evidence-backed contributor paths, change review, deterministic CI gates, and opt-in GitHub Checks annotations. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including language adapters, stronger isolated execution, release-readiness evidence, and evaluated model explanations.
 
 ## Contributing
 

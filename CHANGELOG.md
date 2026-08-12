@@ -2,6 +2,23 @@
 
 All notable changes to ContribProof are documented here.
 
+## 0.5.0 — 2026-08-12
+
+### Added
+
+- opt-in GitHub workflow annotations for failing checks, review findings, and deterministic gate violations;
+- bounded annotation output with safe relative-path handling and escaping for workflow-command data;
+- Action input and CLI flag documentation for the annotation integration.
+
+### Security
+
+- annotations are disabled by default, do not execute new commands, and never copy evidence detail fields into workflow-command messages;
+- absolute and parent-traversing evidence paths are omitted from annotation locations.
+
+### Changed
+
+- bumped the public package, report, MCP server, and Action examples to `0.5.0`.
+
 ## 0.4.0 — 2026-08-12
 
 ### Added

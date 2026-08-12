@@ -3,7 +3,7 @@ const path = require("node:path");
 const { formatHtml } = require("./html");
 
 const TOOL_NAME = "ContribProof";
-const TOOL_VERSION = "0.4.0";
+const TOOL_VERSION = "0.5.0";
 
 function summarize(checks, strict = false) {
   const counts = { pass: 0, warn: 0, fail: 0, skip: 0 };

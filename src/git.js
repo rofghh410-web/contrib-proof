@@ -1,3 +1,4 @@
+const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 function runGit(root, args, { maxBuffer = 1024 * 1024 } = {}) {
@@ -39,7 +40,9 @@ function getDiffPatch(root, base, { maxBuffer = 8 * 1024 * 1024 } = {}) {
 }
 
 function isGitRepository(root) {
-  return runGit(root, ["rev-parse", "--is-inside-work-tree"]).stdout.trim() === "true";
+  const result = runGit(root, ["rev-parse", "--show-toplevel"]);
+  if (!result.ok) return false;
+  return path.resolve(result.stdout.trim()) === path.resolve(root);
 }
 
 function resolveDiffBase(root, explicitBase) {

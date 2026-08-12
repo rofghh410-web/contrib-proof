@@ -68,6 +68,7 @@ The hash is an integrity aid, not a digital signature. ContribProof does not cur
 - Markdown/JSON/SARIF/HTML: human, automation, security-tool, and offline sharing consumers.
 - Review JSON/Markdown: focused PR evidence for maintainers and coding agents.
 - Gate JSON/Markdown: deterministic CI decision with policy and blocking evidence.
+- GitHub workflow annotations: an opt-in, escaped presentation of report findings for Checks.
 - MCP stdio server: read-only context for coding agents.
 - OpenAI adapter: explicit, advisory explanation of an existing report.
 

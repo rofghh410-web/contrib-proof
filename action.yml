@@ -38,6 +38,10 @@ inputs:
     description: Make warning checks block gate mode.
     required: false
     default: "false"
+  annotations:
+    description: Emit opt-in GitHub workflow annotations for failures and warnings.
+    required: false
+    default: "false"
   bundle:
     description: Optional output directory for a complete proof bundle.
     required: false
@@ -64,6 +68,7 @@ runs:
         CP_MAX_RISK: ${{ inputs['max-risk'] }}
         CP_REQUIRE_REVIEW: ${{ inputs['require-review'] }}
         CP_FAIL_ON_WARNINGS: ${{ inputs['fail-on-warnings'] }}
+        CP_ANNOTATIONS: ${{ inputs.annotations }}
         CP_BUNDLE: ${{ inputs.bundle }}
       run: |
         set -uo pipefail
@@ -80,6 +85,7 @@ runs:
         if [[ -n "$CP_MAX_RISK" ]]; then args+=(--max-risk "$CP_MAX_RISK"); fi
         if [[ "$CP_REQUIRE_REVIEW" == "true" ]]; then args+=(--require-review); fi
         if [[ "$CP_FAIL_ON_WARNINGS" == "true" ]]; then args+=(--fail-on-warnings); fi
+        if [[ "$CP_ANNOTATIONS" == "true" ]]; then args+=(--github-annotations); fi
         if [[ -n "$CP_BUNDLE" ]]; then args+=(--bundle "$CP_BUNDLE"); fi
         set +e
         node "$GITHUB_ACTION_PATH/bin/contrib-proof.js" "${args[@]}"

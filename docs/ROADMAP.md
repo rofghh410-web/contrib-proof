@@ -43,7 +43,13 @@ The project is deliberately staged around real maintainer feedback rather than f
 - [x] configurable deterministic merge gate with policy-driven exit codes and evidence;
 - [ ] issue intake evidence packet;
 - [ ] release-readiness report from merged changes;
-- [ ] opt-in GitHub Checks annotations;
+- [ ] historical report store with privacy-preserving aggregate metrics;
+- [ ] evaluation corpus of false-positive and false-negative cases.
+
+## 0.5 — CI feedback
+
+- [x] opt-in GitHub Checks annotations with escaped, bounded workflow commands;
+- [ ] release-readiness report from merged changes;
 - [ ] historical report store with privacy-preserving aggregate metrics;
 - [ ] evaluation corpus of false-positive and false-negative cases.
 

@@ -7,7 +7,7 @@ const test = require("node:test");
 const { extractImports, extractSymbols, buildGraph, analyzeImpact } = require("../src/graph");
 const { compareReports } = require("../src/compare");
 const { checkChangePolicy } = require("../src/checks");
-const { getChangedFiles } = require("../src/git");
+const { getChangedFiles, isGitRepository } = require("../src/git");
 const { buildSafeEnvironment, executeCommand } = require("../src/runner");
 const { explainReport, extractOutputText, redactReport } = require("../src/openai");
 const { buildDependencyInventory, checkActionPinning, checkDependencyHygiene } = require("../src/dependencies");
@@ -17,6 +17,50 @@ const { buildRemediationPlan, formatPlanMarkdown } = require("../src/plan");
 const { validateGate, validatePlan, validateReport, validateReview } = require("../src/validate");
 const { buildReviewPacket, formatReviewMarkdown, parseDiffPatch } = require("../src/review");
 const { evaluateGate, formatGateMarkdown, validateGatePolicy } = require("../src/gate");
+const { buildGithubAnnotations, formatGithubAnnotations, normalizeAnnotationPath } = require("../src/annotations");
+
+test("GitHub annotations escape untrusted text and keep evidence paths relative", () => {
+  const report = {
+    checks: [{
+      status: "fail",
+      title: "Bad, title: 100%",
+      message: "first line\nsecond line",
+      evidence: [{ path: "src\\main.js", line: 7, detail: "do not emit this" }]
+    }],
+    review: {
+      findings: [{
+        level: "high",
+        title: "Credential-like value added",
+        message: "Review the redacted value.",
+        evidence: [{ path: "../outside.js", line: 2 }]
+      }]
+    }
+  };
+  const output = formatGithubAnnotations(report);
+  assert.match(output, /::error title=ContribProof%3A Bad%2C title%3A 100%25,file=src\/main.js,line=7::first line%0Asecond line/);
+  assert.match(output, /::error title=ContribProof%3A Credential-like value added,line=2::Review the redacted value\./);
+  assert.doesNotMatch(output, /do not emit this/);
+  assert.equal(normalizeAnnotationPath("/absolute/file.js"), null);
+  assert.equal(normalizeAnnotationPath("C:\\absolute\\file.js"), null);
+  assert.equal(normalizeAnnotationPath("src/../../outside.js"), null);
+  assert.equal(normalizeAnnotationPath("./src/main.js"), "src/main.js");
+});
+
+test("GitHub annotation output reports truncation at a bounded limit", () => {
+  const result = buildGithubAnnotations({
+    checks: [{
+      status: "warn",
+      title: "Many findings",
+      message: "Review these files.",
+      evidence: [{ path: "a.js" }, { path: "b.js" }]
+    }]
+  }, { maxAnnotations: 1 });
+  assert.equal(result.lines.length, 1);
+  assert.equal(result.truncated, true);
+  assert.match(formatGithubAnnotations({
+    checks: [{ status: "warn", title: "Many findings", message: "Review these files.", evidence: [{ path: "a.js" }, { path: "b.js" }] }]
+  }, { maxAnnotations: 1 }), /Additional findings were omitted/);
+});
 
 test("graph extraction finds symbols and relative imports", () => {
   const source = "import { helper } from './helper.js';\nexport function main() { return helper(); }";
@@ -104,6 +148,25 @@ test("change policy reports missing test evidence from a real Git diff", () => {
   assert.ok(checks.some((check) => check.id === "changes:tests" && check.status === "warn"));
 });
 
+test("Git checks do not borrow a parent repository for a nested root", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-git-root-"));
+  const nested = path.join(directory, "fixture");
+  fs.mkdirSync(nested);
+  const git = (args) => {
+    const { spawnSync } = require("node:child_process");
+    return spawnSync("git", args, { cwd: directory, encoding: "utf8" });
+  };
+  assert.equal(git(["init", "-b", "main"]).status, 0);
+  assert.equal(git(["config", "user.email", "test@example.invalid"]).status, 0);
+  assert.equal(git(["config", "user.name", "ContribProof Test"]).status, 0);
+  fs.writeFileSync(path.join(directory, "README.md"), "# root\n");
+  assert.equal(git(["add", "."]).status, 0);
+  assert.equal(git(["commit", "-m", "baseline"]).status, 0);
+  assert.equal(isGitRepository(directory), true);
+  assert.equal(isGitRepository(nested), false);
+  assert.equal(getChangedFiles(nested).ok, false);
+});
+
 test("dependency inventory distinguishes manifests with and without lockfiles", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-dependencies-"));
   fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({ dependencies: { example: "^1.0.0" } }));
@@ -136,7 +199,7 @@ test("workflow action pinning reports mutable refs and accepts full SHAs", () =>
 test("remediation plan is deterministic and HTML escapes repository text", () => {
   const report = {
     schemaVersion: 1,
-    tool: { name: "ContribProof", version: "0.4.0" },
+    tool: { name: "ContribProof", version: "0.5.0" },
     mode: "verify",
     summary: { score: 50, pass: 1, warn: 1, fail: 1, skip: 0 },
     checks: [
@@ -157,7 +220,7 @@ test("remediation plan is deterministic and HTML escapes repository text", () =>
 test("artifact validators accept generated contracts and reject malformed input", () => {
   const validReport = {
     schemaVersion: 1,
-    tool: { name: "ContribProof", version: "0.4.0" },
+    tool: { name: "ContribProof", version: "0.5.0" },
     summary: { status: "pass", score: 100, pass: 1, warn: 0, fail: 0, skip: 0, total: 1 },
     checks: [{ id: "ok", category: "validation", status: "pass", title: "OK", message: "fine", evidence: [] }]
   };
@@ -197,7 +260,7 @@ test("change review packet finds high-risk additions without retaining secret va
   assert.equal(validateReview(packet).valid, true);
   const renderedReport = {
     schemaVersion: 1,
-    tool: { name: "ContribProof", version: "0.4.0" },
+    tool: { name: "ContribProof", version: "0.5.0" },
     mode: "review",
     summary: { status: "pass", score: 100, pass: 0, warn: 0, fail: 0, skip: 0, total: 0 },
     checks: [],
@@ -207,7 +270,7 @@ test("change review packet finds high-risk additions without retaining secret va
   assert.doesNotMatch(formatSarif(renderedReport), /sk-this-is-a-test-value/);
   assert.equal(validateReport({
     schemaVersion: 1,
-    tool: { name: "ContribProof", version: "0.4.0" },
+    tool: { name: "ContribProof", version: "0.5.0" },
     summary: { status: "pass", score: 100, pass: 0, warn: 0, fail: 0, skip: 0, total: 0 },
     checks: [],
     review: packet
@@ -252,5 +315,5 @@ test("maintainer gate turns deterministic review policy into an auditable decisi
   const renderedReport = { ...report, gate: result };
   assert.match(formatHtml(renderedReport), /Merge gate/);
   assert.ok(JSON.parse(formatSarif(renderedReport)).runs[0].results.some((item) => item.ruleId === "gate:risk-threshold"));
-  assert.equal(validateReport({ ...renderedReport, schemaVersion: 1, tool: { name: "ContribProof", version: "0.4.0" } }).valid, true);
+  assert.equal(validateReport({ ...renderedReport, schemaVersion: 1, tool: { name: "ContribProof", version: "0.5.0" } }).valid, true);
 });

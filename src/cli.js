@@ -14,16 +14,17 @@ const { createReport, formatReport, writeReport } = require("./report");
 const { evaluateGate } = require("./gate");
 const { buildReviewPacket } = require("./review");
 const { formatValidation, validateGate, validatePlan, validateReport } = require("./validate");
+const { formatGithubAnnotations } = require("./annotations");
 
 function usage() {
   return `ContribProof — evidence-first contributor-path verification
 
 Usage:
   contrib-proof init [--root PATH] [--force]
-  contrib-proof verify [--root PATH] [--execute] [--diff] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--strict]
+  contrib-proof verify [--root PATH] [--execute] [--diff] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--strict] [--github-annotations]
   contrib-proof proof [same options as verify; writes a complete proof bundle]
-  contrib-proof review [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH]
-  contrib-proof gate [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--max-risk LEVEL] [--require-review] [--fail-on-warnings]
+  contrib-proof review [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--github-annotations]
+  contrib-proof gate [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--max-risk LEVEL] [--require-review] [--fail-on-warnings] [--github-annotations]
   contrib-proof compare BASELINE.json CURRENT.json [--format FORMAT] [--output PATH] [--strict]
   contrib-proof plan REPORT.json [--format markdown|json] [--output PATH]
   contrib-proof validate ARTIFACT.json [--kind report|plan|gate] [--format markdown|json] [--output PATH]
@@ -55,6 +56,7 @@ function parseArgs(argv) {
     reportPaths: [],
     model: undefined,
     bundle: null,
+    githubAnnotations: false,
     gateOverrides: {}
   };
   let index = 0;
@@ -101,6 +103,9 @@ function parseArgs(argv) {
     } else if (arg === "--fail-on-warnings") {
       options.gateOverrides.failOnWarnings = true;
       index += 1;
+    } else if (arg === "--github-annotations") {
+      options.githubAnnotations = true;
+      index += 1;
     } else if (arg === "--force") {
       options.force = true;
       index += 1;
@@ -136,7 +141,7 @@ async function run(argv) {
     return;
   }
   if (options.command === "--version" || options.command === "version") {
-    console.log("0.4.0");
+    console.log("0.5.0");
     return;
   }
   if (options.command === "init") {
@@ -195,6 +200,9 @@ async function run(argv) {
   }
   if (options.command === "diff" || options.command === "proof" || options.command === "review" || options.command === "gate") options.includeDiff = true;
   if (options.command === "proof" && !options.bundle) options.bundle = path.join(options.root, "artifacts", "contrib-proof");
+  if (options.githubAnnotations && !options.output) {
+    throw new Error("--github-annotations requires --output so the report stays machine-readable");
+  }
 
   const root = path.resolve(options.root);
   if (!fs.existsSync(root)) throw new Error(`root does not exist: ${root}`);
@@ -252,6 +260,7 @@ async function run(argv) {
   } else {
     process.stdout.write(content);
   }
+  if (options.githubAnnotations) process.stdout.write(formatGithubAnnotations(report));
   process.exitCode = exitCodeFor(report, options.strict);
 }
 

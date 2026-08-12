@@ -26,6 +26,7 @@ ContribProof is designed for repositories that may contain untrusted pull-reques
 | Merge gate | Consumes deterministic report data; no model approval path and no repository mutation |
 | OpenAI adapter | Opt-in; sends a redacted report only |
 | Model output | Advisory; cannot alter deterministic status or files |
+| GitHub annotations | Disabled by default; enabled only by an explicit Action/CLI flag and escaped before workflow-command emission |
 
 ## Important limitations
 
@@ -37,6 +38,7 @@ ContribProof is designed for repositories that may contain untrusted pull-reques
 6. Lockfile presence does not prove dependency safety or freshness; it only records a reproducibility signal.
 7. The change-review detector only scans added diff lines and uses conservative patterns; it can miss encoded or split secrets and can produce false positives.
 8. The optional model explanation can be wrong. It must never be used as the sole security decision.
+9. GitHub annotations are a presentation channel, not a new finding engine. ContribProof bounds their count, emits only report text, and rejects absolute or parent-traversing evidence paths before attaching locations.
 
 ## PR workflow guidance
 

@@ -143,3 +143,17 @@ test("gate command remains usable when review is unavailable and checks pass", (
   assert.equal(report.gate.status, "pass");
   assert.equal(report.gate.policy.requireReview, false);
 });
+
+test("GitHub annotations are opt-in and keep the report file parseable", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-annotations-"));
+  const reportPath = path.join(directory, "report.json");
+  const result = runCli(["verify", "--root", unhealthy, "--format", "json", "--output", reportPath, "--github-annotations"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error title=ContribProof%3A/);
+  assert.doesNotMatch(result.stdout, /OPENAI_API_KEY|sk-/);
+  const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+  assert.equal(report.schemaVersion, 1);
+  const withoutOutput = runCli(["verify", "--root", healthy, "--github-annotations"]);
+  assert.equal(withoutOutput.status, 2);
+  assert.match(withoutOutput.stderr, /requires --output/);
+});
