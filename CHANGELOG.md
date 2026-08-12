@@ -4,6 +4,8 @@ All notable changes to ContribProof are documented here.
 
 ## 0.8.1 — 2026-08-12
 
+Release: [ContribProof v0.8.1](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.8.1)
+
 ### Fixed
 
 - quoted the GitHub Action format description so GitHub's action-manifest YAML parser can load `action.yml` correctly.
