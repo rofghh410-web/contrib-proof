@@ -1,0 +1,92 @@
+name: ContribProof
+description: Run evidence-first contributor-path checks with least privilege.
+author: ContribProof contributors
+inputs:
+  execute:
+    description: Execute commands declared in .contrib-proof.json.
+    required: false
+    default: "false"
+  diff:
+    description: Analyze changed files against the pull request base.
+    required: false
+    default: "false"
+  gate:
+    description: Apply the configured deterministic merge-gate policy and use its exit code.
+    required: false
+    default: "false"
+  base:
+    description: Optional Git base ref for the change policy.
+    required: false
+    default: ""
+  format:
+    description: Report format: markdown, json, sarif, or html.
+    required: false
+    default: markdown
+  strict:
+    description: Treat warnings as failures.
+    required: false
+    default: "false"
+  max-risk:
+    description: Optional gate risk threshold: routine, elevated, or high.
+    required: false
+    default: ""
+  require-review:
+    description: Require a usable Git diff when gate mode is enabled.
+    required: false
+    default: "false"
+  fail-on-warnings:
+    description: Make warning checks block gate mode.
+    required: false
+    default: "false"
+  bundle:
+    description: Optional output directory for a complete proof bundle.
+    required: false
+    default: ""
+outputs:
+  report_path:
+    description: Path to the generated report on the runner.
+    value: ${{ steps.run.outputs.report_path }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - id: run
+      shell: bash
+      env:
+        CP_EXECUTE: ${{ inputs.execute }}
+        CP_DIFF: ${{ inputs.diff }}
+        CP_GATE: ${{ inputs.gate }}
+        CP_BASE: ${{ inputs.base }}
+        CP_FORMAT: ${{ inputs.format }}
+        CP_STRICT: ${{ inputs.strict }}
+        CP_MAX_RISK: ${{ inputs['max-risk'] }}
+        CP_REQUIRE_REVIEW: ${{ inputs['require-review'] }}
+        CP_FAIL_ON_WARNINGS: ${{ inputs['fail-on-warnings'] }}
+        CP_BUNDLE: ${{ inputs.bundle }}
+      run: |
+        set -uo pipefail
+        report_path="${RUNNER_TEMP}/contrib-proof-report.${CP_FORMAT}"
+        if [[ "$CP_GATE" == "true" ]]; then
+          args=(gate --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path")
+        else
+          args=(verify --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path")
+        fi
+        if [[ "$CP_EXECUTE" == "true" ]]; then args+=(--execute); fi
+        if [[ "$CP_DIFF" == "true" ]]; then args+=(--diff); fi
+        if [[ -n "$CP_BASE" ]]; then args+=(--base "$CP_BASE"); fi
+        if [[ "$CP_STRICT" == "true" ]]; then args+=(--strict); fi
+        if [[ -n "$CP_MAX_RISK" ]]; then args+=(--max-risk "$CP_MAX_RISK"); fi
+        if [[ "$CP_REQUIRE_REVIEW" == "true" ]]; then args+=(--require-review); fi
+        if [[ "$CP_FAIL_ON_WARNINGS" == "true" ]]; then args+=(--fail-on-warnings); fi
+        if [[ -n "$CP_BUNDLE" ]]; then args+=(--bundle "$CP_BUNDLE"); fi
+        set +e
+        node "$GITHUB_ACTION_PATH/bin/contrib-proof.js" "${args[@]}"
+        status=$?
+        set -e
+        if [[ "$CP_FORMAT" == "markdown" && -f "$report_path" ]]; then
+          cat "$report_path" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        echo "report_path=$report_path" >> "$GITHUB_OUTPUT"
+        exit "$status"

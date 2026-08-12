@@ -1,0 +1,10 @@
+name: fixture CI
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: node -e "process.exit(0)"

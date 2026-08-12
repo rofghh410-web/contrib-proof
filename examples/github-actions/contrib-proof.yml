@@ -1,0 +1,23 @@
+name: contributor proof
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: rofghh410-web/contrib-proof@v0.4.0
+        with:
+          execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
+          diff: "true"
+          gate: "true"
+          require-review: "true"

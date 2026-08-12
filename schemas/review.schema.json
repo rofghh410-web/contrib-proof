@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/review.schema.json",
+  "title": "ContribProof change review",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "available", "findings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "change-review" },
+    "available": { "type": "boolean" },
+    "risk": { "type": "object", "required": ["score", "level", "factors"] },
+    "changedFiles": { "type": "array" },
+    "findings": { "type": "array" },
+    "testPlan": { "type": "object" },
+    "recommendations": { "type": "array", "items": { "type": "string" } }
+  }
+}

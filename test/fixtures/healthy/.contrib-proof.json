@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "project": "healthy-fixture",
+  "requiredFiles": [
+    "README.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    ".github/workflows/ci.yml"
+  ],
+  "commands": [
+    {
+      "id": "smoke",
+      "name": "smoke command",
+      "run": "node",
+      "args": ["-e", "process.exit(0)"],
+      "required": true
+    }
+  ],
+  "links": { "enabled": true },
+  "changePolicy": {
+    "requireTestsForCode": true,
+    "requireDocsForUserFacingCode": false,
+    "requireChangelogForCode": false
+  }
+}

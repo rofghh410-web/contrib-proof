@@ -1,0 +1,20 @@
+name: Feature request
+description: Propose a maintainer workflow or evidence signal.
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What contributor or maintainer failure is currently expensive?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and proposed interface
+      description: Show a fixture, report example, command, or workflow that demonstrates the improvement.
+    validations:
+      required: true

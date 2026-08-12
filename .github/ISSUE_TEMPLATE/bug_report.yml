@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible ContribProof problem.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: "Please remove secrets and private repository data before posting."
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include the command, a minimal fixture, and the observed output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ContribProof version
+      placeholder: "0.1.0"
+    validations:
+      required: true

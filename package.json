@@ -1,0 +1,57 @@
+{
+  "name": "contrib-proof",
+  "version": "0.4.0",
+  "description": "Evidence-first contributor-path verification, change review, and deterministic CI gates for open-source repositories.",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "bin": {
+    "contrib-proof": "./bin/contrib-proof.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "scripts",
+    "test",
+    "examples",
+    "schemas",
+    "action.yml",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "verify": "node ./bin/contrib-proof.js verify --root . --execute --format markdown",
+    "verify:json": "node ./bin/contrib-proof.js verify --root . --execute --format json --output artifacts/self-check.json",
+    "gate": "node ./bin/contrib-proof.js gate --root . --execute --format markdown",
+    "plan": "node ./bin/contrib-proof.js plan artifacts/self-check.json --format markdown",
+    "lint": "node scripts/lint.js",
+    "release:check": "node scripts/release-check.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "open-source",
+    "maintainers",
+    "contributors",
+    "github-actions",
+    "repository-health",
+    "documentation",
+    "change-review",
+    "supply-chain",
+    "sarif",
+    "mcp",
+    "policy-as-code",
+    "security-maintenance"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rofghh410-web/contrib-proof.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rofghh410-web/contrib-proof/issues"
+  },
+  "homepage": "https://github.com/rofghh410-web/contrib-proof#readme"
+}

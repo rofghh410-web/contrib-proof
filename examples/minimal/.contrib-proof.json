@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "project": "my-open-source-project",
+  "requiredFiles": ["README.md", "CONTRIBUTING.md", "LICENSE"],
+  "commands": [
+    {
+      "id": "tests",
+      "name": "project tests",
+      "run": "node",
+      "args": ["--test"],
+      "timeoutMs": 120000,
+      "required": true
+    }
+  ],
+  "links": { "enabled": true },
+  "changePolicy": {
+    "requireTestsForCode": true,
+    "requireDocsForUserFacingCode": false,
+    "requireChangelogForCode": false
+  },
+  "gatePolicy": {
+    "maxRisk": "elevated",
+    "failOnFindings": ["high"],
+    "failOnCheckFailures": true,
+    "failOnWarnings": false,
+    "requireReview": false
+  }
+}

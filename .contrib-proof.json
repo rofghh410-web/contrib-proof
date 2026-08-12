@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "project": "ContribProof",
+  "requiredFiles": [
+    "README.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    ".github/workflows/ci.yml",
+    ".github/workflows/contrib-proof.yml",
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "action.yml"
+  ],
+  "commands": [
+    {
+      "id": "unit-tests",
+      "name": "unit tests",
+      "run": "node",
+      "args": ["--test"],
+      "timeoutMs": 120000,
+      "required": true
+    },
+    {
+      "id": "syntax",
+      "name": "syntax checks",
+      "run": "node",
+      "args": ["scripts/lint.js"],
+      "timeoutMs": 120000,
+      "required": true
+    }
+  ],
+  "links": {
+    "enabled": true
+  },
+  "dependencyPolicy": {
+    "requireLockfile": true,
+    "checkActionPinning": false,
+    "allowedActionRefs": []
+  },
+  "changePolicy": {
+    "requireTestsForCode": true,
+    "requireDocsForUserFacingCode": true,
+    "requireChangelogForCode": true
+  },
+  "gatePolicy": {
+    "maxRisk": "elevated",
+    "failOnFindings": ["high"],
+    "failOnCheckFailures": true,
+    "failOnWarnings": false,
+    "requireReview": false
+  }
+}
