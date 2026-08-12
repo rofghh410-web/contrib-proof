@@ -2,6 +2,8 @@
 
 Evidence-first contributor-path verification for open-source repositories.
 
+> **ContribProof 0.8.0 is a major upgrade.** The release adds reproducible execution context, offline proof verification, declarative fixture contracts, release-readiness evidence, regression budgets, expiring policy exceptions, and a tamper-evident maintainer ledger. See the [v0.8.0 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.8.0).
+
 ContribProof answers a practical maintainer question:
 
 > After this checkout or pull request, do we have enough reproducible evidence for another person to install, validate, review, and safely maintain the project?
