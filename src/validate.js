@@ -305,6 +305,61 @@ function validateProofVerification(result) {
   return { valid: errors.length === 0, errors };
 }
 
+function validateLanguageAdapters(inventory) {
+  const errors = [];
+  if (!inventory || typeof inventory !== "object" || Array.isArray(inventory)) return { valid: false, errors: ["language-adapters: expected an object"] };
+  if (inventory.schemaVersion !== 1) push(errors, "language-adapters.schemaVersion", "must be 1");
+  if (inventory.kind !== "language-adapters") push(errors, "language-adapters.kind", "must be language-adapters");
+  if (inventory.contractVersion !== 1) push(errors, "language-adapters.contractVersion", "must be 1");
+  if (!Array.isArray(inventory.adapters)) push(errors, "language-adapters.adapters", "must be an array");
+  else for (const [index, adapter] of inventory.adapters.entries()) {
+    if (!adapter || typeof adapter !== "object") push(errors, `language-adapters.adapters[${index}]`, "must be an object");
+    else {
+      for (const field of ["id", "status"]) if (typeof adapter[field] !== "string" || !adapter[field]) push(errors, `language-adapters.adapters[${index}].${field}`, "must be a non-empty string");
+      if (adapter.version !== 1) push(errors, `language-adapters.adapters[${index}].version`, "must be 1");
+      for (const field of ["sourceFiles"]) if (!Number.isInteger(adapter[field]) || adapter[field] < 0) push(errors, `language-adapters.adapters[${index}].${field}`, "must be a non-negative integer");
+      if (!Array.isArray(adapter.testFiles) || adapter.testFiles.some((file) => typeof file !== "string")) push(errors, `language-adapters.adapters[${index}].testFiles`, "must be an array of strings");
+    }
+  }
+  if (!inventory.summary || typeof inventory.summary !== "object") push(errors, "language-adapters.summary", "must be an object");
+  else for (const field of ["adapters", "detected", "sourceFiles", "testFiles"]) if (!Number.isInteger(inventory.summary[field]) || inventory.summary[field] < 0) push(errors, `language-adapters.summary.${field}`, "must be a non-negative integer");
+  return { valid: errors.length === 0, errors };
+}
+
+function validateLedgerAttestation(attestation) {
+  const errors = [];
+  if (!attestation || typeof attestation !== "object" || Array.isArray(attestation)) return { valid: false, errors: ["ledger-attestation: expected an object"] };
+  if (attestation.schemaVersion !== 1) push(errors, "ledger-attestation.schemaVersion", "must be 1");
+  if (attestation.kind !== "ledger-attestation") push(errors, "ledger-attestation.kind", "must be ledger-attestation");
+  if (attestation.algorithm !== "ed25519") push(errors, "ledger-attestation.algorithm", "must be ed25519");
+  if (typeof attestation.createdAt !== "string" || !Number.isFinite(Date.parse(attestation.createdAt))) push(errors, "ledger-attestation.createdAt", "must be an ISO-8601 timestamp");
+  if (!attestation.subject || typeof attestation.subject !== "object" || Array.isArray(attestation.subject)) push(errors, "ledger-attestation.subject", "must be an object");
+  else {
+    if (!Number.isInteger(attestation.subject.entries) || attestation.subject.entries < 0) push(errors, "ledger-attestation.subject.entries", "must be a non-negative integer");
+    if (attestation.subject.headHash !== null && !/^[0-9a-f]{64}$/.test(attestation.subject.headHash || "")) push(errors, "ledger-attestation.subject.headHash", "must be a SHA-256 digest or null");
+    if (!/^[0-9a-f]{64}$/.test(attestation.subject.ledgerHash || "")) push(errors, "ledger-attestation.subject.ledgerHash", "must be a 64-character lowercase SHA-256 digest");
+  }
+  if (!attestation.key || typeof attestation.key !== "object" || Array.isArray(attestation.key)) push(errors, "ledger-attestation.key", "must be an object");
+  else {
+    if (typeof attestation.key.keyId !== "string" || !attestation.key.keyId) push(errors, "ledger-attestation.key.keyId", "must be a non-empty string");
+    if (!/^[0-9a-f]{64}$/.test(attestation.key.publicKeySha256 || "")) push(errors, "ledger-attestation.key.publicKeySha256", "must be a 64-character lowercase SHA-256 digest");
+  }
+  if (typeof attestation.signature !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(attestation.signature) || Buffer.from(attestation.signature, "base64").length === 0) push(errors, "ledger-attestation.signature", "must be a non-empty base64 signature");
+  return { valid: errors.length === 0, errors };
+}
+
+function validateLedgerAttestationVerification(result) {
+  const errors = [];
+  if (!result || typeof result !== "object" || Array.isArray(result)) return { valid: false, errors: ["ledger-attestation-verification: expected an object"] };
+  if (result.schemaVersion !== 1) push(errors, "ledger-attestation-verification.schemaVersion", "must be 1");
+  if (result.kind !== "ledger-attestation-verification") push(errors, "ledger-attestation-verification.kind", "must be ledger-attestation-verification");
+  for (const field of ["valid", "signatureValid", "keyTrusted", "subjectValid"]) if (typeof result[field] !== "boolean") push(errors, `ledger-attestation-verification.${field}`, "must be a boolean");
+  if (result.keyId !== null && typeof result.keyId !== "string") push(errors, "ledger-attestation-verification.keyId", "must be a string or null");
+  for (const field of ["publicKeySha256", "headHash", "ledgerHash"]) if (result[field] !== null && result[field] !== undefined && !/^[0-9a-f]{64}$/.test(result[field])) push(errors, `ledger-attestation-verification.${field}`, "must be a SHA-256 digest or null");
+  if (!Array.isArray(result.errors)) push(errors, "ledger-attestation-verification.errors", "must be an array");
+  return { valid: errors.length === 0, errors };
+}
+
 function validateProofAttestation(attestation) {
   const errors = [];
   if (!attestation || typeof attestation !== "object" || Array.isArray(attestation)) return { valid: false, errors: ["proof-attestation: expected an object"] };
@@ -436,6 +491,9 @@ module.exports = {
   validateGate,
   validateHistoryRetention,
   validateIssueIntake,
+  validateLanguageAdapters,
+  validateLedgerAttestation,
+  validateLedgerAttestationVerification,
   validateBaseline,
   validateDoctor,
   validateExceptions,

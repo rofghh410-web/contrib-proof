@@ -1,6 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const { buildVerificationReport } = require("./engine");
+const { networkDenySupported, normalizeIsolation, prepareIsolatedWorkspace } = require("./isolation");
 
 const DEFAULT_FIXTURE_MANIFEST = ".contrib-proof-fixtures.json";
 const FIXTURE_STATUSES = new Set(["pass", "needs-attention", "fail"]);
@@ -47,27 +49,88 @@ function readFixtureManifest(root, relative = DEFAULT_FIXTURE_MANIFEST) {
       if (item.expected?.[field] !== undefined && (!Array.isArray(item.expected[field]) || item.expected[field].some((value) => typeof value !== "string"))) errors.push(`cases[${index}].expected.${field} must be an array of strings`);
     }
     if (item.execute !== undefined && typeof item.execute !== "boolean") errors.push(`cases[${index}].execute must be a boolean when provided`);
+    if (item.isolation !== undefined) {
+      try {
+        normalizeIsolation(item.isolation);
+      } catch (error) {
+        errors.push(`cases[${index}].isolation is invalid: ${error.message}`);
+      }
+    }
   }
   return { path: file, relative, exists: true, manifest, errors };
 }
 
+function effectiveIsolation(item, options = {}) {
+  return normalizeIsolation({
+    mode: item.isolation?.mode || options.isolationMode || (options.isolate ? "copy" : "none"),
+    network: item.isolation?.network || options.networkPolicy || "allow"
+  });
+}
+
+function executableFixtureReport(root, { applyExceptions, exceptionsPath } = {}) {
+  return buildVerificationReport(root, {
+    execute: true,
+    includeDiff: false,
+    applyExceptions: Boolean(applyExceptions),
+    exceptionsPath
+  });
+}
+
+function runNetworkDeniedFixture(root, options = {}) {
+  if (!networkDenySupported()) return { report: null, error: "network-deny fixture isolation is unavailable on this platform" };
+  const bin = path.resolve(__dirname, "..", "bin", "contrib-proof.js");
+  const args = ["--net", "--", process.execPath, bin, "verify", "--root", root, "--execute", "--format", "json"];
+  if (options.applyExceptions) args.push("--apply-exceptions");
+  if (options.exceptionsPath) args.push("--exceptions-path", options.exceptionsPath);
+  const result = spawnSync("unshare", args, {
+    encoding: "utf8",
+    shell: false,
+    timeout: options.timeoutMs || 180000,
+    maxBuffer: 1024 * 1024
+  });
+  if (result.error) return { report: null, error: `network-deny runner failed: ${result.error.message}` };
+  let report = null;
+  try {
+    report = JSON.parse(result.stdout || "");
+  } catch {
+    const output = String(result.stderr || result.stdout || "").trim();
+    return { report: null, error: `network-deny runner did not produce a report (exit ${result.status ?? "unknown"}): ${output.slice(0, 500)}` };
+  }
+  return { report, error: null };
+}
+
 function runFixtureCase(root, item, options = {}) {
-  const caseRoot = resolveFixturePath(root, item.root);
+  const sourceRoot = resolveFixturePath(root, item.root);
   const expected = item.expected || {};
   const errors = [];
-  if (!fs.existsSync(caseRoot) || !fs.statSync(caseRoot).isDirectory()) errors.push("fixture root does not exist or is not a directory");
+  let workspace = null;
   let report = null;
-  if (!errors.length) {
-    try {
-      report = buildVerificationReport(caseRoot, {
-        execute: options.allowExecute === false ? false : (item.execute === undefined ? Boolean(options.execute) : item.execute),
+  let isolation = null;
+  const execute = options.allowExecute === false ? false : (item.execute === undefined ? Boolean(options.execute) : item.execute);
+  try {
+    const policy = effectiveIsolation(item, options);
+    if (policy.network === "deny" && policy.mode !== "copy") throw new Error("network-deny requires isolation mode copy");
+    workspace = prepareIsolatedWorkspace(sourceRoot, policy);
+    isolation = { ...workspace.isolation, networkEnforced: false };
+    if (execute && policy.network === "deny") {
+      const result = runNetworkDeniedFixture(workspace.root, options);
+      if (result.error) errors.push(result.error);
+      else {
+        report = result.report;
+        isolation.networkEnforced = true;
+      }
+    } else {
+      report = buildVerificationReport(workspace.root, {
+        execute,
         includeDiff: false,
         applyExceptions: Boolean(options.applyExceptions),
         exceptionsPath: options.exceptionsPath
       });
-    } catch (error) {
-      errors.push(`fixture execution failed: ${error.message}`);
     }
+  } catch (error) {
+    errors.push(`fixture execution failed: ${error.message}`);
+  } finally {
+    if (workspace) workspace.cleanup();
   }
   const ids = new Set((report?.checks || []).map((check) => check.id));
   const missingRequired = (expected.requiredChecks || []).filter((id) => !ids.has(id));
@@ -85,7 +148,8 @@ function runFixtureCase(root, item, options = {}) {
     passed: errors.length === 0,
     errors,
     checks: report?.checks?.length || 0,
-    score: report?.summary?.score ?? null
+    score: report?.summary?.score ?? null,
+    isolation
   };
 }
 
@@ -133,11 +197,22 @@ function formatFixtureSuiteMarkdown(result) {
     ""
   ];
   for (const item of result.cases || []) {
-    lines.push(`### ${item.passed ? "✅" : "❌"} ${item.id}`, "", `- Root: \`${item.root}\``, `- Expected: **${item.expectedStatus}**`, `- Actual: **${item.actualStatus || "unavailable"}**`, `- Checks: **${item.checks}**`, "");
+    const policy = item.isolation ? `${item.isolation.mode}; network ${item.isolation.network}${item.isolation.networkEnforced ? " (enforced)" : ""}` : "none";
+    lines.push(`### ${item.passed ? "pass" : "fail"} ${item.id}`, "", `- Root: \`${item.root}\``, `- Expected: **${item.expectedStatus}**`, `- Actual: **${item.actualStatus || "unavailable"}**`, `- Checks: **${item.checks}**`, `- Isolation: **${policy}**`, "");
     if (item.errors.length) lines.push(...item.errors.map((error) => `- ${error}`), "");
   }
   if (result.errors?.length) lines.push("## Errors", "", ...result.errors.map((error) => `- ${error}`), "");
   return `${lines.join("\n").trim()}\n`;
 }
 
-module.exports = { DEFAULT_FIXTURE_MANIFEST, FIXTURE_STATUSES, formatFixtureSuiteMarkdown, readFixtureManifest, resolveFixturePath, runFixtureCase, runFixtureSuite, selectFixtureCases };
+module.exports = {
+  DEFAULT_FIXTURE_MANIFEST,
+  FIXTURE_STATUSES,
+  effectiveIsolation,
+  formatFixtureSuiteMarkdown,
+  readFixtureManifest,
+  resolveFixturePath,
+  runFixtureCase,
+  runFixtureSuite,
+  selectFixtureCases
+};

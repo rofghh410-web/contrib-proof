@@ -11,6 +11,7 @@ const { getChangedFiles, isGitRepository } = require("../src/git");
 const { buildSafeEnvironment, executeCommand } = require("../src/runner");
 const { explainReport, extractOutputText, redactReport } = require("../src/openai");
 const { buildDependencyInventory, checkActionPinning, checkDependencyHygiene } = require("../src/dependencies");
+const { buildLanguageAdapters } = require("../src/adapters");
 const { formatHtml } = require("../src/html");
 const { formatSarif } = require("../src/report");
 const { buildRemediationPlan, formatPlanMarkdown } = require("../src/plan");
@@ -24,12 +25,14 @@ const { evaluateBaseline, formatBaselineMarkdown } = require("../src/baseline");
 const { applyExceptions, buildExceptionChecks, readExceptions, resolveExceptionsPath } = require("../src/exceptions");
 const { buildDoctorReport } = require("../src/doctor");
 const { appendLedger, readLedger, resolveLedgerPath, verifyLedger } = require("../src/ledger");
+const { createLedgerAttestation, verifyLedgerAttestation } = require("../src/ledger-attestation");
+const { prepareIsolatedWorkspace } = require("../src/isolation");
 const { buildVerificationReport } = require("../src/engine");
 const { createProofManifest, verifyProofBundle, writeProofBundle } = require("../src/proof");
 const { createProofAttestation, generateAttestationKeyPair, verifyProofAttestation } = require("../src/attestation");
 const { runFixtureSuite, selectFixtureCases } = require("../src/fixtures");
 const { buildIssueIntake } = require("../src/intake");
-const { validateExecutionContext, validateFixtureSuite, validateHistoryRetention, validateIssueIntake, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification } = require("../src/validate");
+const { validateExecutionContext, validateFixtureSuite, validateHistoryRetention, validateIssueIntake, validateLanguageAdapters, validateLedgerAttestation, validateLedgerAttestationVerification, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification } = require("../src/validate");
 
 test("shared verification engine records reproducible execution context", () => {
   const fixtureRoot = path.resolve(__dirname, "fixtures", "healthy");
@@ -98,6 +101,42 @@ test("fixture suite is declarative and validates as a public artifact", () => {
   assert.equal(suite.summary.total, 2);
   assert.equal(validateFixtureSuite(suite).valid, true);
   assert.throws(() => runFixtureSuite(fixtureRoot, "../outside-fixtures.json"), /inside the repository root/);
+});
+
+test("language adapters and fixture isolation are versioned and symlink-safe", () => {
+  const fixtureRoot = path.resolve(__dirname, "fixtures", "healthy");
+  const projectRoot = path.resolve(__dirname, "..");
+  const inventory = buildLanguageAdapters(projectRoot, require("../src/inventory").buildInventory(projectRoot).files);
+  assert.equal(validateLanguageAdapters(inventory).valid, true);
+  assert.ok(inventory.detected.includes("javascript-typescript"));
+  const workspace = prepareIsolatedWorkspace(fixtureRoot, { mode: "copy", network: "allow" });
+  try {
+    assert.notEqual(workspace.root, fixtureRoot);
+    assert.equal(workspace.isolation.copied, true);
+    assert.ok(fs.existsSync(path.join(workspace.root, "README.md")));
+  } finally {
+    workspace.cleanup();
+  }
+  const symlinkRoot = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-symlink-"));
+  fs.writeFileSync(path.join(symlinkRoot, "real.txt"), "safe");
+  fs.symlinkSync(path.join(symlinkRoot, "real.txt"), path.join(symlinkRoot, "link.txt"));
+  assert.throws(() => prepareIsolatedWorkspace(symlinkRoot, { mode: "copy", network: "allow" }), /refuses symlink/);
+});
+
+test("ledger attestations bind the current ledger to a trusted key", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-ledger-unit-"));
+  const report = buildVerificationReport(path.resolve(__dirname, "fixtures", "healthy"), { execute: true });
+  appendLedger(directory, report, "ledger.jsonl");
+  const keys = generateAttestationKeyPair(path.join(directory, "private.pem"), path.join(directory, "public.pem"));
+  const privatePem = fs.readFileSync(keys.privateKeyPath, "utf8");
+  const publicPem = fs.readFileSync(keys.publicKeyPath, "utf8");
+  const attestation = createLedgerAttestation(directory, "ledger.jsonl", privatePem);
+  const verification = verifyLedgerAttestation(directory, "ledger.jsonl", attestation, publicPem);
+  assert.equal(verification.valid, true);
+  assert.equal(validateLedgerAttestation(attestation).valid, true);
+  assert.equal(validateLedgerAttestationVerification(verification).valid, true);
+  fs.appendFileSync(path.join(directory, "ledger.jsonl"), "\n");
+  assert.equal(verifyLedgerAttestation(directory, "ledger.jsonl", attestation, publicPem).valid, false);
 });
 
 test("fixture selection is explicit and unknown cases fail closed", () => {

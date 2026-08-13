@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/ledger-attestation-verification.schema.json",
+  "title": "ContribProof ledger attestation verification",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "valid", "signatureValid", "keyTrusted", "subjectValid", "keyId", "publicKeySha256", "headHash", "ledgerHash", "errors"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "ledger-attestation-verification" },
+    "valid": { "type": "boolean" },
+    "signatureValid": { "type": "boolean" },
+    "keyTrusted": { "type": "boolean" },
+    "subjectValid": { "type": "boolean" },
+    "keyId": { "type": ["string", "null"] },
+    "publicKeySha256": { "type": ["string", "null"] },
+    "headHash": { "type": ["string", "null"] },
+    "ledgerHash": { "type": ["string", "null"] },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

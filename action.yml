@@ -30,6 +30,14 @@ inputs:
     description: "Optional comma-separated fixture case IDs; empty runs the complete suite."
     required: false
     default: ""
+  isolate-fixtures:
+    description: "Run selected fixture cases from a temporary symlink-free copy."
+    required: false
+    default: "false"
+  network-policy:
+    description: "Fixture execution network policy: allow or deny. Deny requires isolated fixtures and Linux unshare support."
+    required: false
+    default: allow
   base:
     description: "Optional Git base ref for the change policy."
     required: false
@@ -86,6 +94,18 @@ inputs:
     description: "Sign the generated proof bundle with an Ed25519 private key. Requires bundle and private-key-path."
     required: false
     default: "false"
+  ledger-attest:
+    description: "Sign the maintenance ledger with an Ed25519 private key. Requires ledger-private-key-path."
+    required: false
+    default: "false"
+  ledger-private-key-path:
+    description: "Path to an existing Ed25519 private key for the maintenance ledger."
+    required: false
+    default: ""
+  ledger-attestation-key-id:
+    description: "Optional stable key identifier for the ledger attestation."
+    required: false
+    default: ""
   private-key-path:
     description: "Path to an existing Ed25519 private key on the runner; never pass the key contents as an argument."
     required: false
@@ -101,6 +121,9 @@ outputs:
   attestation_path:
     description: "Path to the optional Ed25519 attestation in the proof bundle."
     value: ${{ steps.run.outputs.attestation_path }}
+  ledger_attestation_path:
+    description: "Path to the optional signed maintenance ledger attestation."
+    value: ${{ steps.run.outputs.ledger_attestation_path }}
 runs:
   using: composite
   steps:
@@ -117,6 +140,8 @@ runs:
         CP_FIXTURES: ${{ inputs.fixtures }}
         CP_FIXTURES_PATH: ${{ inputs['fixtures-path'] }}
         CP_FIXTURE_CASES: ${{ inputs['fixture-cases'] }}
+        CP_ISOLATE_FIXTURES: ${{ inputs['isolate-fixtures'] }}
+        CP_NETWORK_POLICY: ${{ inputs['network-policy'] }}
         CP_BASE: ${{ inputs.base }}
         CP_SINCE: ${{ inputs.since }}
         CP_FORMAT: ${{ inputs.format }}
@@ -131,6 +156,9 @@ runs:
         CP_LEDGER_PATH: ${{ inputs['ledger-path'] }}
         CP_RECORD_LEDGER: ${{ inputs['record-ledger'] }}
         CP_ATTEST: ${{ inputs.attest }}
+        CP_LEDGER_ATTEST: ${{ inputs['ledger-attest'] }}
+        CP_LEDGER_PRIVATE_KEY: ${{ inputs['ledger-private-key-path'] }}
+        CP_LEDGER_ATTESTATION_KEY_ID: ${{ inputs['ledger-attestation-key-id'] }}
         CP_PRIVATE_KEY: ${{ inputs['private-key-path'] }}
         CP_ATTESTATION_KEY_ID: ${{ inputs['attestation-key-id'] }}
       run: |
@@ -149,7 +177,8 @@ runs:
           echo "::error::fixtures mode cannot be combined with release, gate, or record-ledger."
           exit 2
         elif [[ "$CP_FIXTURES" == "true" ]]; then
-          args=(fixtures --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path" --fixtures-path "$CP_FIXTURES_PATH")
+          args=(fixtures --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path" --fixtures-path "$CP_FIXTURES_PATH" --network-policy "$CP_NETWORK_POLICY")
+          if [[ "$CP_ISOLATE_FIXTURES" == "true" ]]; then args+=(--isolate); fi
           if [[ -n "$CP_FIXTURE_CASES" ]]; then IFS=',' read -r -a fixture_case_ids <<< "$CP_FIXTURE_CASES"; for case_id in "${fixture_case_ids[@]}"; do if [[ -n "$case_id" ]]; then args+=(--case "$case_id"); fi; done; fi
         elif [[ "$CP_RELEASE" == "true" ]]; then
           args=(release --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path")
@@ -182,6 +211,11 @@ runs:
           attest_status=$?
           if [[ "$status" == "0" && "$attest_status" != "0" ]]; then status="$attest_status"; fi
         fi
+        if [[ "$CP_LEDGER_ATTEST" == "true" && -z "$CP_LEDGER_PRIVATE_KEY" ]]; then
+          echo "::error::ledger-attest requires ledger-private-key-path pointing to an existing Ed25519 private key."
+          ledger_attest_status=2
+          if [[ "$status" == "0" ]]; then status=2; fi
+        fi
         if [[ "$CP_RECORD_LEDGER" == "true" ]]; then
           if [[ "$CP_FORMAT" != "json" ]]; then
             echo "::error::record-ledger requires format=json so the report can be validated safely."
@@ -193,10 +227,19 @@ runs:
           fi
           if [[ "$status" == "0" && "$ledger_status" != "0" ]]; then status="$ledger_status"; fi
         fi
+        if [[ "$CP_LEDGER_ATTEST" == "true" && -n "$CP_LEDGER_PRIVATE_KEY" ]]; then
+          ledger_attestation_path="${RUNNER_TEMP}/contrib-proof-ledger-attestation.json"
+          ledger_attest_args=(ledger-attest --root "$GITHUB_WORKSPACE" --ledger-path "$CP_LEDGER_PATH" --private-key "$CP_LEDGER_PRIVATE_KEY" --output "$ledger_attestation_path")
+          if [[ -n "$CP_LEDGER_ATTESTATION_KEY_ID" ]]; then ledger_attest_args+=(--key-id "$CP_LEDGER_ATTESTATION_KEY_ID"); fi
+          node "$GITHUB_ACTION_PATH/bin/contrib-proof.js" "${ledger_attest_args[@]}"
+          ledger_attest_status=$?
+          if [[ "$status" == "0" && "$ledger_attest_status" != "0" ]]; then status="$ledger_attest_status"; fi
+        fi
         set -e
         if [[ "$CP_FORMAT" == "markdown" && -f "$report_path" ]]; then
           cat "$report_path" >> "$GITHUB_STEP_SUMMARY"
         fi
         echo "report_path=$report_path" >> "$GITHUB_OUTPUT"
         if [[ "$CP_ATTEST" == "true" ]]; then echo "attestation_path=${CP_BUNDLE}/attestation.json" >> "$GITHUB_OUTPUT"; else echo "attestation_path=" >> "$GITHUB_OUTPUT"; fi
+        if [[ "$CP_LEDGER_ATTEST" == "true" ]]; then echo "ledger_attestation_path=${ledger_attestation_path:-}" >> "$GITHUB_OUTPUT"; else echo "ledger_attestation_path=" >> "$GITHUB_OUTPUT"; fi
         exit "$status"

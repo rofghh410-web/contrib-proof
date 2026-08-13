@@ -1,6 +1,6 @@
 {
   "name": "contrib-proof",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Evidence-first contributor-path verification, change review, and deterministic CI gates for open-source repositories.",
   "type": "commonjs",
   "main": "src/index.js",

@@ -39,7 +39,12 @@ const publicTextFiles = [
   "docs/ATTESTATIONS.md",
   "docs/MAINTAINER_OPERATIONS.md",
   "schemas/issue-intake.schema.json",
-  "schemas/history-retention.schema.json"
+  "schemas/history-retention.schema.json",
+  "schemas/language-adapters.schema.json",
+  "schemas/ledger-attestation.schema.json",
+  "schemas/ledger-attestation-verification.schema.json",
+  "docs/MCP.md",
+  "docs/REPOSITORY_TRUST.md"
 ];
 for (const relative of publicTextFiles) {
   const text = fs.readFileSync(path.join(root, relative), "utf8");

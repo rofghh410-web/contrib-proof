@@ -22,7 +22,7 @@ ContribProof is designed for repositories that may contain untrusted pull-reques
 | GitHub workflow | Example requests `contents: read` only |
 | Dependency and action inventory | Read-only local signals; no registry resolution or workflow execution |
 | HTML report | Escaped, self-contained output; no external scripts or remote requests |
-| MCP | Twelve read-only tools; no arbitrary shell or write tool |
+| MCP | Read-only tools; no arbitrary shell, write, network, or mutation tool |
 | Merge gate | Consumes deterministic report data; no model approval path and no repository mutation |
 | OpenAI adapter | Opt-in; sends a redacted report only |
 | Model output | Advisory; cannot alter deterministic status or files |
@@ -35,6 +35,9 @@ ContribProof is designed for repositories that may contain untrusted pull-reques
 | Doctor | PATH and metadata inspection only; does not execute declared project commands |
 | Proof verification | Recalculates hashes and reads only repository-confined manifest evidence paths |
 | Fixture contracts | Declarative status/check assertions; MCP mode forces configured commands off |
+| Fixture isolation | Optional symlink-free temporary copy; network deny is only claimed when Linux namespace enforcement succeeds |
+| Language adapters | Versioned local source/test/manifest signals; no package-manager or compiler execution |
+| Ledger attestation | Detached Ed25519 trust root bound to entry count, chain head, and raw ledger hash |
 | Execution context | Records runtime and checkout provenance; does not elevate trust or sign reports |
 
 ## Important limitations
@@ -54,6 +57,10 @@ ContribProof is designed for repositories that may contain untrusted pull-reques
 13. A baseline budget protects against selected regressions between two reports; it does not prove the baseline itself was correct or that unobserved checks are safe.
 14. Proof verification detects changes relative to a manifest; it is not a digital signature, provenance attestation, or proof of authorship.
 15. Fixture contracts assert selected stable signals and can miss behavior outside their declared check IDs. CLI `--execute` still runs only trusted configurations; MCP fixture runs never execute project commands.
+16. Fixture isolation is not a full sandbox. The temporary copy rejects symlinks and can use Linux `unshare --net`, but hostile code still requires a container, VM, or hardened runner.
+17. Network-deny is fail-closed, not universal. If namespace creation is unavailable, the fixture fails rather than claiming that network access was blocked.
+18. Language adapters are bounded structural evidence. They do not type-check, compile, resolve every generated or dynamic import, or audit dependencies.
+19. A ledger attestation proves the selected ledger identity under a trusted public key; it does not prove that the recorded report was correct or that the key owner made a wise decision.
 
 ## PR workflow guidance
 

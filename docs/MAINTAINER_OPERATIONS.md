@@ -15,7 +15,7 @@ Create a structured payload in a private working directory or CI artifact. The p
   "fields": {
     "reproduction": "node --test fixture.test.js",
     "expected": "The command passes",
-    "version": "0.10.0"
+    "version": "0.11.0"
   }
 }
 ```
@@ -42,7 +42,7 @@ The result records both `selection.requested` and `selection.selected`. An unkno
 The GitHub Action accepts a comma-separated `fixture-cases` input:
 
 ```yaml
-- uses: rofghh410-web/contrib-proof@v0.10.0
+- uses: rofghh410-web/contrib-proof@v0.11.0
   with:
     fixtures: "true"
     fixture-cases: "package-a,package-b"

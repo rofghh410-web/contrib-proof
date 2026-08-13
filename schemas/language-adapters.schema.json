@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/language-adapters.schema.json",
+  "title": "ContribProof language adapter inventory",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "contractVersion", "adapters", "detected", "summary"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "language-adapters" },
+    "contractVersion": { "const": 1 },
+    "adapters": { "type": "array", "items": { "type": "object" } },
+    "detected": { "type": "array", "items": { "type": "string" } },
+    "summary": {
+      "type": "object",
+      "required": ["adapters", "detected", "sourceFiles", "testFiles"],
+      "properties": {
+        "adapters": { "type": "integer", "minimum": 0 },
+        "detected": { "type": "integer", "minimum": 0 },
+        "sourceFiles": { "type": "integer", "minimum": 0 },
+        "testFiles": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

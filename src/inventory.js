@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { buildDependencyInventory } = require("./dependencies");
+const { buildLanguageAdapters } = require("./adapters");
 
 const IGNORED_DIRECTORIES = new Set([
   ".git", ".hg", ".svn", "node_modules", "vendor", "target", "dist", "build", "artifacts",
@@ -141,6 +142,7 @@ function buildInventory(root, { maxFiles = 10000 } = {}) {
     .map((file) => inspectWorkflow(root, file));
   const markdownFiles = files.filter((file) => /\.(md|mdx)$/i.test(file.path)).map((file) => file.path);
   const dependencies = buildDependencyInventory(root, files);
+  const adapters = buildLanguageAdapters(root, files);
   return {
     schemaVersion: 1,
     fileCount: files.length,
@@ -151,7 +153,8 @@ function buildInventory(root, { maxFiles = 10000 } = {}) {
     markdownFiles,
     workflows,
     package: parsePackageScripts(root),
-    dependencies
+    dependencies,
+    adapters
   };
 }
 

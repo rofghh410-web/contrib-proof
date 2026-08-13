@@ -3,6 +3,7 @@ const path = require("node:path");
 const readline = require("node:readline");
 const packageJson = require("../package.json");
 const { buildInventory } = require("./inventory");
+const { verifyLedgerAttestationFromFiles } = require("./ledger-attestation");
 const { buildRemediationPlan } = require("./plan");
 const { buildVerificationReport } = require("./engine");
 const { buildDoctorReport } = require("./doctor");
@@ -64,7 +65,8 @@ async function handleRequest(root, request) {
     reply(id, {
       tools: [
         { name: "repo_verify", description: "Run read-only contributor-path checks for the configured repository.", inputSchema: { type: "object", properties: { applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
-        { name: "repo_inventory", description: "Return a read-only inventory of files, languages, manifests, workflows, and package scripts.", inputSchema: { type: "object", properties: {} } },
+        { name: "repo_inventory", description: "Return a read-only inventory of files, languages, manifests, workflows, package scripts, and detected adapters.", inputSchema: { type: "object", properties: {} } },
+        { name: "repo_adapters", description: "Return versioned read-only JavaScript/TypeScript, Python, Rust, and Go adapter evidence.", inputSchema: { type: "object", properties: {} } },
         { name: "repo_diff", description: "Run read-only change-policy checks against a Git base ref.", inputSchema: { type: "object", properties: { base: { type: "string" }, applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
         { name: "repo_plan", description: "Return a read-only prioritized remediation plan derived from repository checks.", inputSchema: { type: "object", properties: { applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
         { name: "repo_review", description: "Return a read-only change-risk and test-evidence packet for a Git diff.", inputSchema: { type: "object", properties: { base: { type: "string" }, applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
@@ -72,9 +74,10 @@ async function handleRequest(root, request) {
         { name: "repo_release", description: "Return a read-only release-readiness report from Git history and repository metadata.", inputSchema: { type: "object", properties: { base: { type: "string" }, version: { type: "string" }, applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
         { name: "repo_doctor", description: "Return read-only runtime, Git, configuration, and executable-availability diagnostics.", inputSchema: { type: "object", properties: {} } },
         { name: "repo_ledger", description: "Verify the append-only maintenance ledger without modifying it.", inputSchema: { type: "object", properties: { ledgerPath: { type: "string" } } } },
+        { name: "repo_ledger_attestation", description: "Verify a detached Ed25519 ledger attestation against the current repository ledger and a repository-relative public key.", inputSchema: { type: "object", properties: { ledgerPath: { type: "string" }, attestationPath: { type: "string" }, publicKeyPath: { type: "string" } }, required: ["attestationPath", "publicKeyPath"] } },
         { name: "repo_baseline", description: "Evaluate two repository reports against a deterministic regression budget.", inputSchema: { type: "object", properties: { baselinePath: { type: "string" }, currentPath: { type: "string" }, maxNewFailures: { type: "integer", minimum: 0 }, maxNewWarnings: { type: "integer", minimum: 0 }, maxScoreDrop: { type: "integer", minimum: 0 } }, required: ["baselinePath", "currentPath"] } },
         { name: "repo_proof_verify", description: "Verify a proof bundle and its referenced evidence hashes without modifying the repository.", inputSchema: { type: "object", properties: { bundlePath: { type: "string" } }, required: ["bundlePath"] } },
-        { name: "repo_fixtures", description: "Run the repository's declarative fixture contract suite without executing project commands.", inputSchema: { type: "object", properties: { fixturesPath: { type: "string" }, caseIds: { type: "array", items: { type: "string" } }, applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
+        { name: "repo_fixtures", description: "Run the repository's declarative fixture contract suite without executing project commands.", inputSchema: { type: "object", properties: { fixturesPath: { type: "string" }, caseIds: { type: "array", items: { type: "string" } }, isolate: { type: "boolean" }, isolationMode: { enum: ["none", "copy"] }, networkPolicy: { enum: ["allow", "deny"] }, applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
         { name: "repo_intake", description: "Build a read-only issue-intake evidence packet from a local JSON payload and repository issue templates.", inputSchema: { type: "object", properties: { issuePath: { type: "string" }, templatesPath: { type: "string" } }, required: ["issuePath"] } },
         { name: "repo_history_retention", description: "Preview a privacy-preserving history retention policy without modifying the repository.", inputSchema: { type: "object", properties: { historyPath: { type: "string" }, keepLast: { type: "integer", minimum: 0 } }, required: ["keepLast"] } }
       ]
@@ -95,6 +98,11 @@ async function handleRequest(root, request) {
   if (name === "repo_inventory") {
     const inventory = buildInventory(root);
     reply(id, { content: [{ type: "text", text: JSON.stringify(inventory, null, 2) }], structuredContent: inventory });
+    return;
+  }
+  if (name === "repo_adapters") {
+    const adapters = buildInventory(root).adapters;
+    reply(id, { content: [{ type: "text", text: JSON.stringify(adapters, null, 2) }], structuredContent: adapters });
     return;
   }
   if (name === "repo_diff") {
@@ -139,6 +147,14 @@ async function handleRequest(root, request) {
     reply(id, { content: [{ type: "text", text: JSON.stringify(ledger, null, 2) }], structuredContent: ledger });
     return;
   }
+  if (name === "repo_ledger_attestation") {
+    const ledgerPath = typeof args.ledgerPath === "string" ? args.ledgerPath : DEFAULT_LEDGER_PATH;
+    const attestationPath = safeRepositoryPath(root, args.attestationPath, "ledger attestation");
+    const publicKeyPath = safeRepositoryPath(root, args.publicKeyPath, "ledger public key");
+    const verification = verifyLedgerAttestationFromFiles(root, ledgerPath, attestationPath, publicKeyPath);
+    reply(id, { content: [{ type: "text", text: JSON.stringify(verification, null, 2) }], structuredContent: verification });
+    return;
+  }
   if (name === "repo_baseline") {
     const baseline = JSON.parse(fs.readFileSync(safeRepositoryPath(root, args.baselinePath, "baseline path"), "utf8"));
     const current = JSON.parse(fs.readFileSync(safeRepositoryPath(root, args.currentPath, "current path"), "utf8"));
@@ -160,7 +176,7 @@ async function handleRequest(root, request) {
   }
   if (name === "repo_fixtures") {
     const fixturesPath = typeof args.fixturesPath === "string" ? args.fixturesPath : DEFAULT_FIXTURE_MANIFEST;
-    const suite = runFixtureSuite(root, fixturesPath, { execute: false, allowExecute: false, caseIds: Array.isArray(args.caseIds) ? args.caseIds : [], applyExceptions: Boolean(args.applyExceptions), exceptionsPath: typeof args.exceptionsPath === "string" ? args.exceptionsPath : undefined });
+    const suite = runFixtureSuite(root, fixturesPath, { execute: false, allowExecute: false, caseIds: Array.isArray(args.caseIds) ? args.caseIds : [], isolate: Boolean(args.isolate), isolationMode: typeof args.isolationMode === "string" ? args.isolationMode : null, networkPolicy: typeof args.networkPolicy === "string" ? args.networkPolicy : "allow", applyExceptions: Boolean(args.applyExceptions), exceptionsPath: typeof args.exceptionsPath === "string" ? args.exceptionsPath : undefined });
     reply(id, { content: [{ type: "text", text: JSON.stringify(suite, null, 2) }], structuredContent: suite });
     return;
   }

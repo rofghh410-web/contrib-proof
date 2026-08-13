@@ -2,7 +2,7 @@
 
 Evidence-first contributor-path verification for open-source repositories.
 
-> **ContribProof 0.10 is a maintainer-operations upgrade.** The release adds offline issue-intake evidence, monorepo fixture selection, safe history-retention management, Ed25519 proof attestations, explicit maintainer trust roots, reproducible execution context, and deterministic CI evidence. Use the [v0.10.0 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.10.0).
+> **ContribProof 0.11 is a repository-trust upgrade.** The release adds versioned language adapters, isolated fixture execution with explicit network policy, signed maintenance-ledger attestations, offline issue-intake evidence, and deterministic CI control-plane artifacts. Use the [v0.11.0 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.11.0).
 
 ContribProof answers a practical maintainer question:
 
@@ -74,16 +74,43 @@ Run the repository's declarative regression fixtures:
 contrib-proof fixtures --root . --execute --format markdown
 ```
 
-For a monorepo or a layered CI job, select only the relevant fixture cases while preserving the requested/selected IDs in the result:
+For a monorepo or a layered CI job, select only the relevant fixture cases while preserving the requested/selected IDs in the result. Use a temporary symlink-free copy when executing fixture commands:
 
 ```bash
-contrib-proof fixtures --root . --case package-a --case package-b --format json
+contrib-proof fixtures --root . --case package-a --case package-b --execute --isolate --network-policy allow --format json
+```
+
+A fixture manifest may request an explicit policy:
+
+```json
+{
+  "id": "package-a",
+  "root": "packages/a",
+  "execute": true,
+  "isolation": { "mode": "copy", "network": "deny" },
+  "expected": { "status": "pass" }
+}
+```
+
+Network denial is fail-closed: it requires Linux `unshare --net` support and reports an error rather than claiming isolation when enforcement is unavailable.
+
+Inspect cross-language repository evidence:
+
+```bash
+contrib-proof adapters --root . --format markdown
 ```
 
 Generate an offline issue-intake packet from a structured payload. The packet records field presence, lengths, labels, and bounded signals rather than copying the issue body:
 
 ```bash
 contrib-proof intake artifacts/issue.json --root . --format markdown
+```
+
+Sign and verify the current maintenance ledger with a separate maintainer trust root:
+
+```bash
+contrib-proof ledger-attest --root . --ledger-path .contrib-proof-ledger.jsonl --private-key .secrets/ledger-private.pem --output artifacts/ledger-attestation.json
+contrib-proof ledger-attest-verify artifacts/ledger-attestation.json --root . --ledger-path .contrib-proof-ledger.jsonl --public-key .secrets/ledger-public.pem --format markdown
 ```
 
 Preview history retention before writing, then apply it explicitly:
@@ -135,7 +162,7 @@ contrib-proof validate artifacts/contrib-proof/report.json --kind report --forma
 contrib-proof validate artifacts/contrib-proof/manifest.json --kind proof-manifest --format json
 ```
 
-The report, review, gate, release, baseline, doctor, exception, ledger, execution-context, fixture, proof, attestation, issue-intake, and history-retention contracts are documented in [`schemas/`](schemas/).
+The report, review, gate, release, baseline, doctor, exception, ledger, execution-context, fixture, proof, attestation, issue-intake, history-retention, language-adapter, and ledger-attestation contracts are documented in [`schemas/`](schemas/).
 The validator is intentionally small and dependency-free; it checks the fields ContribProof promises, not every possible repository-specific extension.
 
 ### Signed proof attestations
@@ -391,7 +418,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: rofghh410-web/contrib-proof@v0.10.0
+      - uses: rofghh410-web/contrib-proof@v0.11.0
         with:
           execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
           diff: "true"
@@ -462,7 +489,7 @@ The adapter sends a redacted report, not the whole checkout. It instructs the mo
 
 ## Project status
 
-ContribProof is a functioning 0.10 release. The current release remains dependency-free and adds an operations layer: offline issue-intake evidence, monorepo fixture selection, explicit history-retention policies, and read-only MCP previews while retaining the reproducibility and signed trust-boundary planes from 0.9. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including isolated fixture checkout, signed ledger attestations, key-rotation metadata, language adapters, and evaluated model explanations.
+ContribProof is a functioning 0.11 release. The current release remains dependency-free and adds a repository-trust layer: versioned language adapters, symlink-free fixture copies, fail-closed network policy, signed ledger identities, and read-only MCP verification while retaining the maintainer operations, reproducibility, and proof trust planes from 0.10. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including key rotation and revocation metadata, richer semantic diff adapters, isolated checkout caching, and evaluated model explanations.
 
 ## Contributing
 

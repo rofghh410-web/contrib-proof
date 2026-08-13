@@ -87,6 +87,10 @@ Configured commands are represented as `{ run, args }`, never as a shell express
 
 `src/intake.js` builds an offline issue packet from local issue forms and a structured JSON payload. It retains only template metadata, field presence/length summaries, labels, and bounded credential-like signals; it never copies issue bodies or field values into the packet. `src/fixtures.js` records requested and selected case IDs so monorepo runs remain auditable. `src/history.js` previews a retention plan and rewrites only after an explicit CLI flag, refusing to modify a history file with parse errors.
 
+`src/adapters.js` implements a versioned built-in adapter contract. Adapters discover bounded source/test paths and manifest facts without invoking ecosystem package managers; the resulting inventory is surfaced in reports and can be requested independently through CLI or MCP. `src/isolation.js` prepares a temporary copy only after rejecting source symlinks and excludes caches/build outputs. A fixture requesting `network: deny` is executed through Linux `unshare --net`; unavailable enforcement returns a failure instead of a false security claim.
+
+`src/ledger-attestation.js` reuses the Ed25519 primitives but uses a ledger-specific subject: entry count, chain head hash, and raw JSONL SHA-256. This keeps the proof-bundle trust root and maintenance-ledger trust root independently reviewable.
+
 ### 11. Interfaces
 
 - CLI: local developer workflow and scripting.
@@ -106,6 +110,8 @@ Configured commands are represented as `{ run, args }`, never as a shell express
 - Proof attestation JSON/Markdown: optional Ed25519 signature and detached trust-root verification for proof identities.
 - Issue-intake JSON/Markdown: offline template, payload-shape, and bounded safety-signal packet.
 - History-retention JSON/Markdown: preview or explicit-apply result for summary JSONL retention.
+- Language-adapter JSON/Markdown: versioned cross-language source/test and manifest evidence.
+- Ledger-attestation JSON/Markdown: detached Ed25519 verification of a maintenance-ledger identity.
 - GitHub workflow annotations: an opt-in, escaped presentation of report findings for Checks.
 - MCP stdio server: read-only context for coding agents.
 - OpenAI adapter: explicit, advisory explanation of an existing report.

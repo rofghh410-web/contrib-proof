@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { makeCheck } = require("./check");
 const { checkActionPinning, checkDependencyHygiene } = require("./dependencies");
+const { buildLanguageAdapterChecks } = require("./adapters");
 
 function readIfPresent(root, relative) {
   try {
@@ -164,7 +165,8 @@ function runPolicyChecks(root, config, inventory) {
     ...checkPackageScripts(inventory),
     ...checkSensitiveFilenames(root, inventory),
     ...checkDependencyHygiene(inventory, config.dependencyPolicy),
-    ...checkActionPinning(root, inventory, config.dependencyPolicy)
+    ...checkActionPinning(root, inventory, config.dependencyPolicy),
+    ...buildLanguageAdapterChecks(inventory.adapters)
   ];
 }
 

@@ -2,6 +2,31 @@
 
 All notable changes to ContribProof are documented here.
 
+## 0.11.0 — 2026-08-13
+
+### Added
+
+- versioned built-in language adapters for JavaScript/TypeScript/Vue, Python, Rust, and Go, with source/test discovery and manifest facts;
+- isolated fixture execution from symlink-free temporary copies with per-case `mode` and `network` policies;
+- fail-closed Linux `unshare --net` execution for fixtures requesting network denial;
+- detached Ed25519 ledger attestations bound to entry count, head hash, and raw ledger SHA-256 identity;
+- `adapters`, `ledger-attest`, and `ledger-attest-verify` CLI commands;
+- read-only MCP tools for language adapters and ledger attestation verification;
+- Action inputs for isolated fixtures, network policy, and ledger attestation outputs;
+- language-adapter, ledger-attestation, and ledger-attestation-verification JSON Schema contracts.
+
+### Security
+
+- fixture isolation refuses source symlinks and excludes repository caches and build directories from temporary copies;
+- network denial is never represented as enforced when the platform or namespace runner cannot provide it;
+- ledger attestation verification requires both the trusted Ed25519 fingerprint and an exact current ledger subject match;
+- private key values remain file-based and are never placed in command arguments.
+
+### Changed
+
+- bumped package, report, MCP server, citation metadata, Action examples, and documentation to `0.11.0`;
+- verification reports now expose adapter evidence and adapter-derived checks.
+
 ## 0.10.0 — 2026-08-13
 
 ### Added

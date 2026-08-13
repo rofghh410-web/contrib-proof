@@ -5,12 +5,14 @@ const { compareReports, formatComparisonMarkdown } = require("./compare");
 const { evaluateBaseline, formatBaselineMarkdown } = require("./baseline");
 const { loadConfig, writeDefaultConfig } = require("./config");
 const { buildVerificationReport } = require("./engine");
+const { buildInventory } = require("./inventory");
+const { formatLanguageAdaptersMarkdown } = require("./adapters");
 const { startMcpServer } = require("./mcp-server");
 const { explainReport } = require("./openai");
 const { buildRemediationPlan, formatPlanMarkdown } = require("./plan");
 const { createProofManifest, formatProofVerificationMarkdown, verifyProofBundle, writeProofBundle } = require("./proof");
 const { formatReport, writeReport } = require("./report");
-const { formatValidation, validateBaseline, validateDoctor, validateExceptions, validateFixtureSuite, validateGate, validateHistoryRetention, validateIssueIntake, validatePlan, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification, validateRelease, validateReport } = require("./validate");
+const { formatValidation, validateBaseline, validateDoctor, validateExceptions, validateFixtureSuite, validateGate, validateHistoryRetention, validateIssueIntake, validateLanguageAdapters, validateLedgerAttestation, validateLedgerAttestationVerification, validatePlan, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification, validateRelease, validateReport } = require("./validate");
 const { formatGithubAnnotations } = require("./annotations");
 const { appendHistory, applyHistoryRetention, DEFAULT_HISTORY_PATH, formatHistoryMarkdown, formatHistoryRetentionMarkdown, planHistoryRetention, readHistory, summarizeHistory } = require("./history");
 const { buildDoctorReport, formatDoctorMarkdown } = require("./doctor");
@@ -18,6 +20,7 @@ const { DEFAULT_EXCEPTIONS_PATH } = require("./exceptions");
 const { appendLedger, DEFAULT_LEDGER_PATH, formatLedgerMarkdown, verifyLedger } = require("./ledger");
 const { DEFAULT_FIXTURE_MANIFEST, formatFixtureSuiteMarkdown, runFixtureSuite } = require("./fixtures");
 const { createProofAttestationFromFiles, formatProofAttestationVerificationMarkdown, generateAttestationKeyPair, verifyProofAttestationFromFiles } = require("./attestation");
+const { createLedgerAttestationFromFiles, formatLedgerAttestationVerificationMarkdown, verifyLedgerAttestationFromFiles } = require("./ledger-attestation");
 const { DEFAULT_ISSUE_TEMPLATE_DIRECTORY, buildIssueIntake, formatIssueIntakeMarkdown } = require("./intake");
 
 function parseNonNegativeInteger(value, flag) {
@@ -37,18 +40,21 @@ Usage:
   contrib-proof attest-keygen --private-key PATH --public-key PATH [--force] [--output PATH]
   contrib-proof attest BUNDLE --private-key PATH [--key-id ID] [--output PATH]
   contrib-proof attest-verify ATTESTATION.json --public-key PATH [--bundle BUNDLE] [--format markdown|json] [--output PATH]
+  contrib-proof ledger-attest --root PATH --ledger-path PATH --private-key PATH [--key-id ID] [--output PATH]
+  contrib-proof ledger-attest-verify ATTESTATION.json --root PATH --ledger-path PATH --public-key PATH [--format markdown|json] [--output PATH]
+  contrib-proof adapters [--root PATH] [--format markdown|json] [--output PATH]
   contrib-proof review [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--github-annotations]
   contrib-proof gate [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--max-risk LEVEL] [--require-review] [--fail-on-warnings] [--github-annotations]
   contrib-proof release [--root PATH] [--since REF] [--version VERSION] [--format FORMAT] [--output PATH] [--bundle PATH]
   contrib-proof history [--root PATH] [--record REPORT.json] [--history-path PATH] [--retain N] [--apply-retention] [--format markdown|json] [--output PATH]
   contrib-proof ledger [--root PATH] [--record REPORT.json] [--ledger-path PATH] [--format markdown|json] [--output PATH]
   contrib-proof doctor [--root PATH] [--format markdown|json] [--output PATH]
-  contrib-proof fixtures [--root PATH] [--fixtures-path PATH] [--case ID] [--execute] [--format markdown|json] [--output PATH]
+  contrib-proof fixtures [--root PATH] [--fixtures-path PATH] [--case ID] [--execute] [--isolate] [--isolation-mode none|copy] [--network-policy allow|deny] [--format markdown|json] [--output PATH]
   contrib-proof intake ISSUE.json [--root PATH] [--templates-path PATH] [--format markdown|json] [--output PATH]
   contrib-proof compare BASELINE.json CURRENT.json [--format FORMAT] [--output PATH] [--strict]
   contrib-proof baseline BASELINE.json CURRENT.json [--max-new-failures N] [--max-new-warnings N] [--max-score-drop N] [--format markdown|json] [--output PATH]
   contrib-proof plan REPORT.json [--format markdown|json] [--output PATH]
-  contrib-proof validate ARTIFACT.json [--kind report|plan|gate|release|baseline|doctor|exceptions|fixtures|history-retention|issue-intake|proof-manifest|proof-verification|proof-attestation|proof-attestation-verification] [--format markdown|json] [--output PATH]
+  contrib-proof validate ARTIFACT.json [--kind report|plan|gate|release|baseline|doctor|exceptions|fixtures|history-retention|issue-intake|language-adapters|ledger-attestation|ledger-attestation-verification|proof-manifest|proof-verification|proof-attestation|proof-attestation-verification] [--format markdown|json] [--output PATH]
   contrib-proof mcp [--root PATH]
   contrib-proof explain REPORT.json [--model MODEL]
 
@@ -95,7 +101,10 @@ function parseArgs(argv) {
     caseIds: [],
     templatesPath: DEFAULT_ISSUE_TEMPLATE_DIRECTORY,
     retainHistory: null,
-    applyRetention: false
+    applyRetention: false,
+    isolate: false,
+    isolationMode: null,
+    networkPolicy: "allow"
   };
   let index = 0;
   if (argv[0] === "--version" && argv.length === 1) {
@@ -176,6 +185,15 @@ function parseArgs(argv) {
     } else if (arg === "--apply-retention") {
       options.applyRetention = true;
       index += 1;
+    } else if (arg === "--isolate") {
+      options.isolate = true;
+      index += 1;
+    } else if (arg === "--isolation-mode") {
+      options.isolationMode = argv[index + 1] || null;
+      index += 2;
+    } else if (arg === "--network-policy") {
+      options.networkPolicy = argv[index + 1] || "allow";
+      index += 2;
     } else if (arg === "--model") {
       options.model = argv[index + 1] || undefined;
       index += 2;
@@ -215,7 +233,7 @@ function parseArgs(argv) {
     } else if ((options.command === "compare" || options.command === "baseline") && !arg.startsWith("-") && options.reportPaths.length < 2) {
       options.reportPaths.push(path.resolve(arg));
       index += 1;
-    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate" || options.command === "proof-verify" || options.command === "attest" || options.command === "attest-verify" || options.command === "intake") && !arg.startsWith("-")) {
+    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate" || options.command === "proof-verify" || options.command === "attest" || options.command === "attest-verify" || options.command === "ledger-attest-verify" || options.command === "intake") && !arg.startsWith("-")) {
       options.inputPath = path.resolve(arg);
       options.reportPath = options.inputPath;
       index += 1;
@@ -262,7 +280,7 @@ async function run(argv) {
   if (options.command === "fixtures") {
     const root = path.resolve(options.root);
     if (!fs.existsSync(root)) throw new Error(`root does not exist: ${root}`);
-    const suite = runFixtureSuite(root, options.fixturesPath, { execute: options.execute, caseIds: options.caseIds, applyExceptions: options.applyExceptions, exceptionsPath: options.exceptionsPath });
+    const suite = runFixtureSuite(root, options.fixturesPath, { execute: options.execute, caseIds: options.caseIds, isolate: options.isolate, isolationMode: options.isolationMode, networkPolicy: options.networkPolicy, applyExceptions: options.applyExceptions, exceptionsPath: options.exceptionsPath });
     const content = options.format === "json" ? `${JSON.stringify(suite, null, 2)}\n` : formatFixtureSuiteMarkdown(suite);
     if (options.output) writeReport(options.output, content);
     else process.stdout.write(content);
@@ -293,6 +311,35 @@ async function run(argv) {
     const outputPath = options.output || path.join(path.resolve(options.inputPath), "attestation.json");
     writeReport(outputPath, content);
     if (!options.output) process.stdout.write(content);
+    return;
+  }
+  if (options.command === "ledger-attest") {
+    const root = path.resolve(options.root);
+    if (!options.privateKeyPath) throw new Error("ledger-attest requires --private-key PATH");
+    const attestation = createLedgerAttestationFromFiles(root, options.ledgerPath, options.privateKeyPath, { keyId: options.keyId });
+    const content = `${JSON.stringify(attestation, null, 2)}\n`;
+    const outputPath = options.output || path.join(root, "ledger-attestation.json");
+    writeReport(outputPath, content);
+    if (!options.output) process.stdout.write(content);
+    return;
+  }
+  if (options.command === "ledger-attest-verify") {
+    if (!options.inputPath) throw new Error("ledger-attest-verify requires an attestation JSON path");
+    if (!options.publicKeyPath) throw new Error("ledger-attest-verify requires --public-key PATH");
+    const verification = verifyLedgerAttestationFromFiles(path.resolve(options.root), options.ledgerPath, options.inputPath, options.publicKeyPath);
+    const content = options.format === "json" ? `${JSON.stringify(verification, null, 2)}\n` : formatLedgerAttestationVerificationMarkdown(verification);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    process.exitCode = verification.valid ? 0 : 1;
+    return;
+  }
+  if (options.command === "adapters") {
+    const root = path.resolve(options.root);
+    const inventory = buildInventory(root);
+    const result = inventory.adapters;
+    const content = options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : formatLanguageAdaptersMarkdown(result);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
     return;
   }
   if (options.command === "attest-verify") {
@@ -339,6 +386,9 @@ async function run(argv) {
     else if (options.kind === "proof-attestation-verification") result = validateProofAttestationVerification(artifact);
     else if (options.kind === "history-retention") result = validateHistoryRetention(artifact);
     else if (options.kind === "issue-intake") result = validateIssueIntake(artifact);
+    else if (options.kind === "language-adapters") result = validateLanguageAdapters(artifact);
+    else if (options.kind === "ledger-attestation") result = validateLedgerAttestation(artifact);
+    else if (options.kind === "ledger-attestation-verification") result = validateLedgerAttestationVerification(artifact);
     else result = validateReport(artifact);
     const content = options.format === "json"
       ? `${JSON.stringify(result, null, 2)}\n`
@@ -429,7 +479,7 @@ async function run(argv) {
     process.exitCode = decision.passed ? 0 : 1;
     return;
   }
-  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "release" && options.command !== "plan" && options.command !== "validate" && options.command !== "history" && options.command !== "ledger" && options.command !== "doctor" && options.command !== "baseline" && options.command !== "proof-verify" && options.command !== "fixtures" && options.command !== "attest-keygen" && options.command !== "attest" && options.command !== "attest-verify" && options.command !== "intake") {
+  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "release" && options.command !== "plan" && options.command !== "validate" && options.command !== "history" && options.command !== "ledger" && options.command !== "doctor" && options.command !== "baseline" && options.command !== "proof-verify" && options.command !== "fixtures" && options.command !== "attest-keygen" && options.command !== "attest" && options.command !== "attest-verify" && options.command !== "ledger-attest" && options.command !== "ledger-attest-verify" && options.command !== "adapters" && options.command !== "intake") {
     throw new Error(`unknown command: ${options.command}\n\n${usage()}`);
   }
   if (options.command === "diff" || options.command === "proof" || options.command === "review" || options.command === "gate" || options.command === "release") options.includeDiff = true;

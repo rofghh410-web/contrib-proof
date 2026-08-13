@@ -21,7 +21,7 @@ function runCli(args, cwd = root) {
 test("version flag reports the public release version", () => {
   const result = runCli(["--version"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "0.10.0");
+  assert.equal(result.stdout.trim(), "0.11.0");
 });
 
 test("healthy fixture passes executable verification", () => {
@@ -92,11 +92,35 @@ test("attestation CLI signs and verifies a proof bundle against a public trust r
 });
 
 test("fixture command supports selecting a single monorepo case", () => {
-  const result = runCli(["fixtures", "--root", root, "--case", "healthy-fixture", "--execute", "--format", "json"]);
+  const result = runCli(["fixtures", "--root", root, "--case", "healthy-fixture", "--execute", "--isolate", "--format", "json"]);
   assert.equal(result.status, 0, result.stderr);
   const suite = JSON.parse(result.stdout);
   assert.deepEqual(suite.selection.selected, ["healthy-fixture"]);
   assert.equal(suite.summary.total, 1);
+  assert.equal(suite.cases[0].isolation.copied, true);
+});
+
+test("language adapters and ledger attestations produce verifiable artifacts", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-ledger-attestation-"));
+  const reportPath = path.join(directory, "report.json");
+  const report = runCli(["verify", "--root", healthy, "--execute", "--format", "json"]);
+  assert.equal(report.status, 0, report.stderr);
+  fs.writeFileSync(reportPath, report.stdout);
+  const ledger = runCli(["ledger", "--root", directory, "--record", reportPath, "--ledger-path", "ledger.jsonl", "--format", "json"]);
+  assert.equal(ledger.status, 0, ledger.stderr);
+  const privateKey = path.join(directory, "ledger-private.pem");
+  const publicKey = path.join(directory, "ledger-public.pem");
+  const generated = runCli(["attest-keygen", "--private-key", privateKey, "--public-key", publicKey]);
+  assert.equal(generated.status, 0, generated.stderr);
+  const attestationPath = path.join(directory, "ledger-attestation.json");
+  const attested = runCli(["ledger-attest", "--root", directory, "--ledger-path", "ledger.jsonl", "--private-key", privateKey, "--output", attestationPath]);
+  assert.equal(attested.status, 0, attested.stderr);
+  const verified = runCli(["ledger-attest-verify", attestationPath, "--root", directory, "--ledger-path", "ledger.jsonl", "--public-key", publicKey, "--format", "json"]);
+  assert.equal(verified.status, 0, verified.stderr);
+  assert.equal(JSON.parse(verified.stdout).valid, true);
+  const adapters = runCli(["adapters", "--root", healthy, "--format", "json"]);
+  assert.equal(adapters.status, 0, adapters.stderr);
+  assert.equal(JSON.parse(adapters.stdout).kind, "language-adapters");
 });
 
 test("issue intake and history retention produce auditable offline packets", () => {
@@ -180,13 +204,24 @@ test("MCP server exposes read-only tools and structured inventory", () => {
   const proofBundle = path.join(healthy, ".mcp-proof-bundle");
   const intakeDirectory = path.join(healthy, ".mcp-issue-templates");
   const intakePath = path.join(healthy, ".mcp-issue.json");
+  const ledgerPath = path.join(healthy, ".mcp-ledger.jsonl");
+  const ledgerReportPath = path.join(healthy, ".mcp-ledger-report.json");
+  const ledgerPrivatePath = path.join(healthy, ".mcp-ledger-private.pem");
+  const ledgerPublicPath = path.join(healthy, ".mcp-ledger-public.pem");
+  const ledgerAttestationPath = path.join(healthy, ".mcp-ledger-attestation.json");
   fs.rmSync(proofBundle, { recursive: true, force: true });
   fs.rmSync(intakeDirectory, { recursive: true, force: true });
+  for (const file of [ledgerPath, ledgerReportPath, ledgerPrivatePath, ledgerPublicPath, ledgerAttestationPath]) fs.rmSync(file, { force: true });
   fs.mkdirSync(intakeDirectory, { recursive: true });
   fs.writeFileSync(path.join(intakeDirectory, "bug.yml"), "name: Bug\nlabels:\n  - bug\nbody:\n  - type: textarea\n    id: reproduction\n    validations:\n      required: true\n");
   fs.writeFileSync(intakePath, JSON.stringify({ title: "MCP issue", template: "bug.yml", labels: ["bug"], fields: { reproduction: "reproduce" } }));
   const proof = runCli(["proof", "--root", healthy, "--execute", "--format", "json", "--bundle", proofBundle]);
   assert.equal(proof.status, 0, proof.stderr);
+  const ledgerReport = runCli(["verify", "--root", healthy, "--execute", "--format", "json"]);
+  fs.writeFileSync(ledgerReportPath, ledgerReport.stdout);
+  assert.equal(runCli(["ledger", "--root", healthy, "--record", ledgerReportPath, "--ledger-path", ".mcp-ledger.jsonl", "--format", "json"]).status, 0);
+  assert.equal(runCli(["attest-keygen", "--private-key", ledgerPrivatePath, "--public-key", ledgerPublicPath]).status, 0);
+  assert.equal(runCli(["ledger-attest", "--root", healthy, "--ledger-path", ".mcp-ledger.jsonl", "--private-key", ledgerPrivatePath, "--output", ledgerAttestationPath]).status, 0);
   const requests = [
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } },
     { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
@@ -201,17 +236,20 @@ test("MCP server exposes read-only tools and structured inventory", () => {
     { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "repo_proof_verify", arguments: { bundlePath: ".mcp-proof-bundle" } } },
     { jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "repo_fixtures", arguments: {} } },
     { jsonrpc: "2.0", id: 13, method: "tools/call", params: { name: "repo_intake", arguments: { issuePath: ".mcp-issue.json", templatesPath: ".mcp-issue-templates" } } },
-    { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "repo_history_retention", arguments: { keepLast: 5 } } }
+    { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "repo_history_retention", arguments: { keepLast: 5 } } },
+    { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "repo_adapters", arguments: {} } },
+    { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "repo_ledger_attestation", arguments: { ledgerPath: ".mcp-ledger.jsonl", attestationPath: ".mcp-ledger-attestation.json", publicKeyPath: ".mcp-ledger-public.pem" } } }
   ].map((request) => JSON.stringify(request)).join("\n") + "\n";
   const result = spawnSync(process.execPath, [bin, "mcp", "--root", healthy], { input: requests, encoding: "utf8" });
   fs.rmSync(proofBundle, { recursive: true, force: true });
   fs.rmSync(intakeDirectory, { recursive: true, force: true });
   fs.rmSync(intakePath, { force: true });
+  for (const file of [ledgerPath, ledgerReportPath, ledgerPrivatePath, ledgerPublicPath, ledgerAttestationPath]) fs.rmSync(file, { force: true });
   assert.equal(result.status, 0, result.stderr);
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.equal(responses[0].result.protocolVersion, "2024-11-05");
-  assert.equal(responses[0].result.serverInfo.version, "0.10.0");
-  assert.equal(responses[1].result.tools.length, 14);
+  assert.equal(responses[0].result.serverInfo.version, "0.11.0");
+  assert.equal(responses[1].result.tools.length, 16);
   assert.ok(responses[2].result.structuredContent.fileCount >= 4);
   assert.ok(Array.isArray(responses[3].result.structuredContent.items));
   assert.equal(responses[4].result.structuredContent.kind, "change-review");
@@ -226,6 +264,11 @@ test("MCP server exposes read-only tools and structured inventory", () => {
   assert.equal(responses[12].result.structuredContent.kind, "issue-intake");
   assert.equal(responses[13].result.structuredContent.kind, "history-retention");
   assert.equal(responses[13].result.structuredContent.applied, false);
+  assert.equal(responses[14].result.structuredContent.kind, "language-adapters");
+  assert.ok(responses[15], `${result.stderr}\n${result.stdout}`);
+  assert.equal(responses[15].error, undefined, JSON.stringify(responses[15]));
+  assert.equal(responses[15].result.structuredContent.kind, "ledger-attestation-verification");
+  assert.equal(responses[15].result.structuredContent.valid, true);
 });
 
 test("baseline, exceptions, and ledger CLI commands create auditable artifacts", () => {

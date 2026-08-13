@@ -2,6 +2,16 @@
 
 The project is deliberately staged around real maintainer feedback rather than feature count.
 
+## 0.11 — Repository trust
+
+- [x] versioned JavaScript/TypeScript/Vue, Python, Rust, and Go language adapters;
+- [x] symlink-free temporary fixture copies with explicit isolation mode and network policy;
+- [x] fail-closed network-deny execution when Linux namespace support is unavailable;
+- [x] signed maintenance-ledger attestations with a ledger-specific trust subject;
+- [x] CLI, MCP, Action, schema, report, documentation, and regression integration;
+- [ ] key rotation and revocation metadata for long-lived CI installations;
+- [ ] richer semantic diff adapters and public calibration corpus.
+
 ## 0.10 — Maintainer operations
 
 - [x] offline issue-intake evidence packets from local issue forms and structured payloads;
