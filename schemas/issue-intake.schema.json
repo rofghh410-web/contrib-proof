@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/issue-intake.schema.json",
+  "title": "ContribProof issue intake evidence packet",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "root", "issuePath", "templates", "issue", "selectedTemplate", "summary", "checks", "recommendations"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "issue-intake" },
+    "root": { "type": "string" },
+    "issuePath": { "type": "string", "minLength": 1 },
+    "templates": {
+      "type": "object",
+      "required": ["path", "available"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "available": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
+    },
+    "issue": { "type": ["object", "null"] },
+    "selectedTemplate": { "type": ["object", "null"] },
+    "summary": {
+      "type": "object",
+      "required": ["pass", "warn", "fail", "total", "status"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["pass", "needs-attention", "fail"] }
+      },
+      "additionalProperties": false
+    },
+    "checks": { "type": "array", "items": { "type": "object" } },
+    "recommendations": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

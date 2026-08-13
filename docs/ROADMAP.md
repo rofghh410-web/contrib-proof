@@ -2,6 +2,16 @@
 
 The project is deliberately staged around real maintainer feedback rather than feature count.
 
+## 0.10 — Maintainer operations
+
+- [x] offline issue-intake evidence packets from local issue forms and structured payloads;
+- [x] monorepo fixture case selection with requested/selected provenance;
+- [x] preview-only and explicit-apply history retention policies with corruption refusal;
+- [x] CLI, MCP, Action fixture selection, schema, documentation, and regression integration;
+- [ ] isolated fixture checkout runner with configurable network denial;
+- [ ] signed ledger attestations with a ledger-specific trust root;
+- [ ] issue packet calibration against accepted and rejected fixture cases.
+
 ## 0.9 — Trust-boundary evidence
 
 - [x] Ed25519 proof attestations with explicit maintainer key fingerprints;

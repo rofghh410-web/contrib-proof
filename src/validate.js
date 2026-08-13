@@ -230,12 +230,50 @@ function validateExecutionContext(context) {
   return { valid: errors.length === 0, errors };
 }
 
+function validateHistoryRetention(result) {
+  const errors = [];
+  if (!result || typeof result !== "object" || Array.isArray(result)) return { valid: false, errors: ["history-retention: expected an object"] };
+  if (result.schemaVersion !== 1) push(errors, "history-retention.schemaVersion", "must be 1");
+  if (result.kind !== "history-retention") push(errors, "history-retention.kind", "must be history-retention");
+  for (const field of ["keepLast", "total", "kept", "removed"]) if (!Number.isInteger(result[field]) || result[field] < 0) push(errors, `history-retention.${field}`, "must be a non-negative integer");
+  if (typeof result.applied !== "boolean") push(errors, "history-retention.applied", "must be a boolean");
+  if (result.path !== undefined && typeof result.path !== "string") push(errors, "history-retention.path", "must be a string when provided");
+  if (!Array.isArray(result.retainedEntries)) push(errors, "history-retention.retainedEntries", "must be an array");
+  return { valid: errors.length === 0, errors };
+}
+
+function validateIssueIntake(packet) {
+  const errors = [];
+  if (!packet || typeof packet !== "object" || Array.isArray(packet)) return { valid: false, errors: ["issue-intake: expected an object"] };
+  if (packet.schemaVersion !== 1) push(errors, "issue-intake.schemaVersion", "must be 1");
+  if (packet.kind !== "issue-intake") push(errors, "issue-intake.kind", "must be issue-intake");
+  for (const field of ["root", "issuePath"]) if (typeof packet[field] !== "string" || !packet[field]) push(errors, `issue-intake.${field}`, "must be a non-empty string");
+  if (!packet.templates || typeof packet.templates !== "object" || !Array.isArray(packet.templates.available)) push(errors, "issue-intake.templates", "must contain an available array");
+  if (packet.issue !== null && packet.issue !== undefined && (typeof packet.issue !== "object" || Array.isArray(packet.issue))) push(errors, "issue-intake.issue", "must be an object or null");
+  if (packet.selectedTemplate !== null && packet.selectedTemplate !== undefined && (typeof packet.selectedTemplate !== "object" || Array.isArray(packet.selectedTemplate))) push(errors, "issue-intake.selectedTemplate", "must be an object or null");
+  if (!packet.summary || typeof packet.summary !== "object") push(errors, "issue-intake.summary", "must be an object");
+  else {
+    for (const field of ["pass", "warn", "fail", "total"]) if (!Number.isInteger(packet.summary[field]) || packet.summary[field] < 0) push(errors, `issue-intake.summary.${field}`, "must be a non-negative integer");
+    if (!["pass", "needs-attention", "fail"].includes(packet.summary.status)) push(errors, "issue-intake.summary.status", "has an unsupported value");
+  }
+  if (!Array.isArray(packet.checks)) push(errors, "issue-intake.checks", "must be an array");
+  else for (const [index, check] of packet.checks.entries()) {
+    if (!check || typeof check !== "object") push(errors, `issue-intake.checks[${index}]`, "must be an object");
+    else for (const field of ["id", "category", "status", "severity", "title", "message"]) if (typeof check[field] !== "string" || !check[field]) push(errors, `issue-intake.checks[${index}].${field}`, "must be a non-empty string");
+  }
+  if (!Array.isArray(packet.recommendations) || packet.recommendations.some((item) => typeof item !== "string")) push(errors, "issue-intake.recommendations", "must be an array of strings");
+  return { valid: errors.length === 0, errors };
+}
+
 function validateFixtureSuite(suite) {
   const errors = [];
   if (!suite || typeof suite !== "object" || Array.isArray(suite)) return { valid: false, errors: ["fixture-suite: expected an object"] };
   if (suite.schemaVersion !== 1) push(errors, "fixture-suite.schemaVersion", "must be 1");
   if (suite.kind !== "fixture-suite") push(errors, "fixture-suite.kind", "must be fixture-suite");
   if (typeof suite.path !== "string") push(errors, "fixture-suite.path", "must be a string");
+  if (suite.selection !== undefined) {
+    if (!suite.selection || typeof suite.selection !== "object" || !Array.isArray(suite.selection.requested) || !Array.isArray(suite.selection.selected) || suite.selection.requested.some((value) => typeof value !== "string") || suite.selection.selected.some((value) => typeof value !== "string")) push(errors, "fixture-suite.selection", "must contain requested and selected arrays of strings");
+  }
   if (typeof suite.valid !== "boolean") push(errors, "fixture-suite.valid", "must be a boolean");
   if (!suite.summary || typeof suite.summary !== "object") push(errors, "fixture-suite.summary", "must be an object");
   else for (const field of ["total", "passed", "failed"]) if (!Number.isInteger(suite.summary[field]) || suite.summary[field] < 0) push(errors, `fixture-suite.summary.${field}`, "must be a non-negative integer");
@@ -396,6 +434,8 @@ function formatValidation(result) {
 module.exports = {
   formatValidation,
   validateGate,
+  validateHistoryRetention,
+  validateIssueIntake,
   validateBaseline,
   validateDoctor,
   validateExceptions,

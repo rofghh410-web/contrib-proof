@@ -10,14 +10,15 @@ const { explainReport } = require("./openai");
 const { buildRemediationPlan, formatPlanMarkdown } = require("./plan");
 const { createProofManifest, formatProofVerificationMarkdown, verifyProofBundle, writeProofBundle } = require("./proof");
 const { formatReport, writeReport } = require("./report");
-const { formatValidation, validateBaseline, validateDoctor, validateExceptions, validateFixtureSuite, validateGate, validatePlan, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification, validateRelease, validateReport } = require("./validate");
+const { formatValidation, validateBaseline, validateDoctor, validateExceptions, validateFixtureSuite, validateGate, validateHistoryRetention, validateIssueIntake, validatePlan, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification, validateRelease, validateReport } = require("./validate");
 const { formatGithubAnnotations } = require("./annotations");
-const { appendHistory, DEFAULT_HISTORY_PATH, formatHistoryMarkdown, readHistory, summarizeHistory } = require("./history");
+const { appendHistory, applyHistoryRetention, DEFAULT_HISTORY_PATH, formatHistoryMarkdown, formatHistoryRetentionMarkdown, planHistoryRetention, readHistory, summarizeHistory } = require("./history");
 const { buildDoctorReport, formatDoctorMarkdown } = require("./doctor");
 const { DEFAULT_EXCEPTIONS_PATH } = require("./exceptions");
 const { appendLedger, DEFAULT_LEDGER_PATH, formatLedgerMarkdown, verifyLedger } = require("./ledger");
 const { DEFAULT_FIXTURE_MANIFEST, formatFixtureSuiteMarkdown, runFixtureSuite } = require("./fixtures");
 const { createProofAttestationFromFiles, formatProofAttestationVerificationMarkdown, generateAttestationKeyPair, verifyProofAttestationFromFiles } = require("./attestation");
+const { DEFAULT_ISSUE_TEMPLATE_DIRECTORY, buildIssueIntake, formatIssueIntakeMarkdown } = require("./intake");
 
 function parseNonNegativeInteger(value, flag) {
   const parsed = Number(value);
@@ -39,14 +40,15 @@ Usage:
   contrib-proof review [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--github-annotations]
   contrib-proof gate [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--max-risk LEVEL] [--require-review] [--fail-on-warnings] [--github-annotations]
   contrib-proof release [--root PATH] [--since REF] [--version VERSION] [--format FORMAT] [--output PATH] [--bundle PATH]
-  contrib-proof history [--root PATH] [--record REPORT.json] [--history-path PATH] [--format markdown|json] [--output PATH]
+  contrib-proof history [--root PATH] [--record REPORT.json] [--history-path PATH] [--retain N] [--apply-retention] [--format markdown|json] [--output PATH]
   contrib-proof ledger [--root PATH] [--record REPORT.json] [--ledger-path PATH] [--format markdown|json] [--output PATH]
   contrib-proof doctor [--root PATH] [--format markdown|json] [--output PATH]
-  contrib-proof fixtures [--root PATH] [--fixtures-path PATH] [--execute] [--format markdown|json] [--output PATH]
+  contrib-proof fixtures [--root PATH] [--fixtures-path PATH] [--case ID] [--execute] [--format markdown|json] [--output PATH]
+  contrib-proof intake ISSUE.json [--root PATH] [--templates-path PATH] [--format markdown|json] [--output PATH]
   contrib-proof compare BASELINE.json CURRENT.json [--format FORMAT] [--output PATH] [--strict]
   contrib-proof baseline BASELINE.json CURRENT.json [--max-new-failures N] [--max-new-warnings N] [--max-score-drop N] [--format markdown|json] [--output PATH]
   contrib-proof plan REPORT.json [--format markdown|json] [--output PATH]
-  contrib-proof validate ARTIFACT.json [--kind report|plan|gate|release|baseline|doctor|exceptions|fixtures|proof-manifest|proof-verification|proof-attestation|proof-attestation-verification] [--format markdown|json] [--output PATH]
+  contrib-proof validate ARTIFACT.json [--kind report|plan|gate|release|baseline|doctor|exceptions|fixtures|history-retention|issue-intake|proof-manifest|proof-verification|proof-attestation|proof-attestation-verification] [--format markdown|json] [--output PATH]
   contrib-proof mcp [--root PATH]
   contrib-proof explain REPORT.json [--model MODEL]
 
@@ -89,7 +91,11 @@ function parseArgs(argv) {
     gateOverrides: {},
     privateKeyPath: null,
     publicKeyPath: null,
-    keyId: null
+    keyId: null,
+    caseIds: [],
+    templatesPath: DEFAULT_ISSUE_TEMPLATE_DIRECTORY,
+    retainHistory: null,
+    applyRetention: false
   };
   let index = 0;
   if (argv[0] === "--version" && argv.length === 1) {
@@ -158,6 +164,18 @@ function parseArgs(argv) {
     } else if (arg === "--key-id") {
       options.keyId = argv[index + 1] || null;
       index += 2;
+    } else if (arg === "--case") {
+      options.caseIds.push(argv[index + 1] || "");
+      index += 2;
+    } else if (arg === "--templates-path") {
+      options.templatesPath = argv[index + 1] || DEFAULT_ISSUE_TEMPLATE_DIRECTORY;
+      index += 2;
+    } else if (arg === "--retain") {
+      options.retainHistory = parseNonNegativeInteger(argv[index + 1], arg);
+      index += 2;
+    } else if (arg === "--apply-retention") {
+      options.applyRetention = true;
+      index += 1;
     } else if (arg === "--model") {
       options.model = argv[index + 1] || undefined;
       index += 2;
@@ -197,7 +215,7 @@ function parseArgs(argv) {
     } else if ((options.command === "compare" || options.command === "baseline") && !arg.startsWith("-") && options.reportPaths.length < 2) {
       options.reportPaths.push(path.resolve(arg));
       index += 1;
-    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate" || options.command === "proof-verify" || options.command === "attest" || options.command === "attest-verify") && !arg.startsWith("-")) {
+    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate" || options.command === "proof-verify" || options.command === "attest" || options.command === "attest-verify" || options.command === "intake") && !arg.startsWith("-")) {
       options.inputPath = path.resolve(arg);
       options.reportPath = options.inputPath;
       index += 1;
@@ -244,7 +262,7 @@ async function run(argv) {
   if (options.command === "fixtures") {
     const root = path.resolve(options.root);
     if (!fs.existsSync(root)) throw new Error(`root does not exist: ${root}`);
-    const suite = runFixtureSuite(root, options.fixturesPath, { execute: options.execute, applyExceptions: options.applyExceptions, exceptionsPath: options.exceptionsPath });
+    const suite = runFixtureSuite(root, options.fixturesPath, { execute: options.execute, caseIds: options.caseIds, applyExceptions: options.applyExceptions, exceptionsPath: options.exceptionsPath });
     const content = options.format === "json" ? `${JSON.stringify(suite, null, 2)}\n` : formatFixtureSuiteMarkdown(suite);
     if (options.output) writeReport(options.output, content);
     else process.stdout.write(content);
@@ -319,6 +337,8 @@ async function run(argv) {
     else if (options.kind === "proof-verification") result = validateProofVerification(artifact);
     else if (options.kind === "proof-attestation") result = validateProofAttestation(artifact);
     else if (options.kind === "proof-attestation-verification") result = validateProofAttestationVerification(artifact);
+    else if (options.kind === "history-retention") result = validateHistoryRetention(artifact);
+    else if (options.kind === "issue-intake") result = validateIssueIntake(artifact);
     else result = validateReport(artifact);
     const content = options.format === "json"
       ? `${JSON.stringify(result, null, 2)}\n`
@@ -338,12 +358,30 @@ async function run(argv) {
     }
     const history = readHistory(root, options.historyPath);
     const summary = summarizeHistory(history.entries);
+    let retention = null;
+    if (options.retainHistory !== null) {
+      retention = options.applyRetention
+        ? applyHistoryRetention(root, options.historyPath, options.retainHistory)
+        : { ...planHistoryRetention(history.entries, options.retainHistory), path: options.historyPath };
+    }
+    const result = { ...summary, path: options.historyPath, errors: history.errors, retention };
     const content = options.format === "json"
-      ? `${JSON.stringify({ ...summary, path: options.historyPath, errors: history.errors }, null, 2)}\n`
-      : formatHistoryMarkdown(summary);
+      ? `${JSON.stringify(result, null, 2)}\n`
+      : (retention ? `${formatHistoryMarkdown(summary)}\n${formatHistoryRetentionMarkdown(retention)}` : formatHistoryMarkdown(summary));
     if (options.output) writeReport(options.output, content);
     else process.stdout.write(content);
     if (history.errors.length) process.exitCode = 1;
+    return;
+  }
+  if (options.command === "intake") {
+    if (!options.inputPath) throw new Error("intake requires an issue JSON path");
+    const root = path.resolve(options.root);
+    const issuePath = path.relative(root, options.inputPath).split(path.sep).join("/");
+    const packet = buildIssueIntake(root, issuePath, { templatesPath: options.templatesPath });
+    const content = options.format === "json" ? `${JSON.stringify(packet, null, 2)}\n` : formatIssueIntakeMarkdown(packet);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    process.exitCode = packet.summary.fail > 0 ? 1 : 0;
     return;
   }
   if (options.command === "ledger") {
@@ -391,7 +429,7 @@ async function run(argv) {
     process.exitCode = decision.passed ? 0 : 1;
     return;
   }
-  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "release" && options.command !== "plan" && options.command !== "validate" && options.command !== "history" && options.command !== "ledger" && options.command !== "doctor" && options.command !== "baseline" && options.command !== "proof-verify" && options.command !== "fixtures" && options.command !== "attest-keygen" && options.command !== "attest" && options.command !== "attest-verify") {
+  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "release" && options.command !== "plan" && options.command !== "validate" && options.command !== "history" && options.command !== "ledger" && options.command !== "doctor" && options.command !== "baseline" && options.command !== "proof-verify" && options.command !== "fixtures" && options.command !== "attest-keygen" && options.command !== "attest" && options.command !== "attest-verify" && options.command !== "intake") {
     throw new Error(`unknown command: ${options.command}\n\n${usage()}`);
   }
   if (options.command === "diff" || options.command === "proof" || options.command === "review" || options.command === "gate" || options.command === "release") options.includeDiff = true;

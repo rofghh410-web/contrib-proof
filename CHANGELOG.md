@@ -2,6 +2,27 @@
 
 All notable changes to ContribProof are documented here.
 
+## 0.10.0 — 2026-08-13
+
+### Added
+
+- offline `intake` evidence packets that inspect local GitHub issue forms and a structured issue JSON payload without copying field contents into the result;
+- `--case ID` fixture selection for monorepos and layered CI, with requested/selected case provenance in the suite artifact;
+- history retention preview and explicit `--apply-retention` rewriting with corruption refusal;
+- read-only MCP tools for issue intake and history retention preview;
+- issue-intake and history-retention JSON Schema contracts.
+
+### Security
+
+- issue intake emits only field presence, lengths, labels, and bounded detection signals; it does not retain issue body or credential-like values;
+- history retention refuses to rewrite a JSONL file that contains malformed entries and never modifies files during preview mode;
+- MCP retention is preview-only and cannot invoke the CLI's write path.
+
+### Changed
+
+- bumped the public package, report, MCP server, citation metadata, Action examples, and documentation to `0.10.0`;
+- GitHub Action fixture mode accepts an optional comma-separated case selection.
+
 ## 0.9.0 — 2026-08-13
 
 ### Added

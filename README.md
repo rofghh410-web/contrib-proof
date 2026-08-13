@@ -2,7 +2,7 @@
 
 Evidence-first contributor-path verification for open-source repositories.
 
-> **ContribProof 0.9 is a trust-boundary upgrade.** The release adds Ed25519 proof attestations, explicit maintainer trust roots, offline attestation verification, reproducible execution context, offline proof verification, declarative fixture contracts, release-readiness evidence, regression budgets, expiring policy exceptions, and a tamper-evident maintainer ledger. Use the [v0.9.0 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.9.0).
+> **ContribProof 0.10 is a maintainer-operations upgrade.** The release adds offline issue-intake evidence, monorepo fixture selection, safe history-retention management, Ed25519 proof attestations, explicit maintainer trust roots, reproducible execution context, and deterministic CI evidence. Use the [v0.10.0 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.10.0).
 
 ContribProof answers a practical maintainer question:
 
@@ -74,6 +74,25 @@ Run the repository's declarative regression fixtures:
 contrib-proof fixtures --root . --execute --format markdown
 ```
 
+For a monorepo or a layered CI job, select only the relevant fixture cases while preserving the requested/selected IDs in the result:
+
+```bash
+contrib-proof fixtures --root . --case package-a --case package-b --format json
+```
+
+Generate an offline issue-intake packet from a structured payload. The packet records field presence, lengths, labels, and bounded signals rather than copying the issue body:
+
+```bash
+contrib-proof intake artifacts/issue.json --root . --format markdown
+```
+
+Preview history retention before writing, then apply it explicitly:
+
+```bash
+contrib-proof history --root . --retain 50 --format markdown
+contrib-proof history --root . --retain 50 --apply-retention --format markdown
+```
+
 The bundle contains:
 
 ```text
@@ -116,7 +135,8 @@ contrib-proof validate artifacts/contrib-proof/report.json --kind report --forma
 contrib-proof validate artifacts/contrib-proof/manifest.json --kind proof-manifest --format json
 ```
 
-The report, review, gate, release, baseline, doctor, exception, ledger, execution-context, fixture, proof, and attestation contracts are documented in [`schemas/`](schemas/). The validator is intentionally small and dependency-free; it checks the fields ContribProof promises, not every possible repository-specific extension.
+The report, review, gate, release, baseline, doctor, exception, ledger, execution-context, fixture, proof, attestation, issue-intake, and history-retention contracts are documented in [`schemas/`](schemas/).
+The validator is intentionally small and dependency-free; it checks the fields ContribProof promises, not every possible repository-specific extension.
 
 ### Signed proof attestations
 
@@ -371,7 +391,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: rofghh410-web/contrib-proof@v0.9.0
+      - uses: rofghh410-web/contrib-proof@v0.10.0
         with:
           execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
           diff: "true"
@@ -442,7 +462,7 @@ The adapter sends a redacted report, not the whole checkout. It instructs the mo
 
 ## Project status
 
-ContribProof is a functioning 0.9 release. The current release remains dependency-free and adds a signed trust-boundary layer: Ed25519 proof attestations, explicit maintainer key fingerprints, detached verification, streamed command-output limits, and bounded process-group cleanup while retaining the reproducibility and maintainer-control planes from 0.8. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including signed ledger attestations, key-rotation metadata, language adapters, issue-intake evidence, and evaluated model explanations.
+ContribProof is a functioning 0.10 release. The current release remains dependency-free and adds an operations layer: offline issue-intake evidence, monorepo fixture selection, explicit history-retention policies, and read-only MCP previews while retaining the reproducibility and signed trust-boundary planes from 0.9. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including isolated fixture checkout, signed ledger attestations, key-rotation metadata, language adapters, and evaluated model explanations.
 
 ## Contributing
 

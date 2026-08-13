@@ -26,6 +26,10 @@ inputs:
     description: "Repository-relative fixture manifest path."
     required: false
     default: .contrib-proof-fixtures.json
+  fixture-cases:
+    description: "Optional comma-separated fixture case IDs; empty runs the complete suite."
+    required: false
+    default: ""
   base:
     description: "Optional Git base ref for the change policy."
     required: false
@@ -112,6 +116,7 @@ runs:
         CP_RELEASE: ${{ inputs.release }}
         CP_FIXTURES: ${{ inputs.fixtures }}
         CP_FIXTURES_PATH: ${{ inputs['fixtures-path'] }}
+        CP_FIXTURE_CASES: ${{ inputs['fixture-cases'] }}
         CP_BASE: ${{ inputs.base }}
         CP_SINCE: ${{ inputs.since }}
         CP_FORMAT: ${{ inputs.format }}
@@ -145,6 +150,7 @@ runs:
           exit 2
         elif [[ "$CP_FIXTURES" == "true" ]]; then
           args=(fixtures --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path" --fixtures-path "$CP_FIXTURES_PATH")
+          if [[ -n "$CP_FIXTURE_CASES" ]]; then IFS=',' read -r -a fixture_case_ids <<< "$CP_FIXTURE_CASES"; for case_id in "${fixture_case_ids[@]}"; do if [[ -n "$case_id" ]]; then args+=(--case "$case_id"); fi; done; fi
         elif [[ "$CP_RELEASE" == "true" ]]; then
           args=(release --root "$GITHUB_WORKSPACE" --format "$CP_FORMAT" --output "$report_path")
         elif [[ "$CP_GATE" == "true" ]]; then

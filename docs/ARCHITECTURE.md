@@ -85,6 +85,8 @@ Configured commands are represented as `{ run, args }`, never as a shell express
 
 `src/proof.js` now verifies its own output through `proof-verify`. Verification validates the report, confines every manifest path to the selected repository root, recalculates file byte counts and hashes, and compares the canonical report/evidence/bundle identities.
 
+`src/intake.js` builds an offline issue packet from local issue forms and a structured JSON payload. It retains only template metadata, field presence/length summaries, labels, and bounded credential-like signals; it never copies issue bodies or field values into the packet. `src/fixtures.js` records requested and selected case IDs so monorepo runs remain auditable. `src/history.js` previews a retention plan and rewrites only after an explicit CLI flag, refusing to modify a history file with parse errors.
+
 ### 11. Interfaces
 
 - CLI: local developer workflow and scripting.
@@ -102,6 +104,8 @@ Configured commands are represented as `{ run, args }`, never as a shell express
 - Fixture manifest/suite JSON: declarative status and check-ID regression contracts.
 - Proof verification JSON/Markdown: offline integrity verification of a proof bundle and its evidence files.
 - Proof attestation JSON/Markdown: optional Ed25519 signature and detached trust-root verification for proof identities.
+- Issue-intake JSON/Markdown: offline template, payload-shape, and bounded safety-signal packet.
+- History-retention JSON/Markdown: preview or explicit-apply result for summary JSONL retention.
 - GitHub workflow annotations: an opt-in, escaped presentation of report findings for Checks.
 - MCP stdio server: read-only context for coding agents.
 - OpenAI adapter: explicit, advisory explanation of an existing report.

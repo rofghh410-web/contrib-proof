@@ -21,7 +21,7 @@ function runCli(args, cwd = root) {
 test("version flag reports the public release version", () => {
   const result = runCli(["--version"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "0.9.0");
+  assert.equal(result.stdout.trim(), "0.10.0");
 });
 
 test("healthy fixture passes executable verification", () => {
@@ -91,6 +91,56 @@ test("attestation CLI signs and verifies a proof bundle against a public trust r
   assert.equal(JSON.parse(validation.stdout).valid, true);
 });
 
+test("fixture command supports selecting a single monorepo case", () => {
+  const result = runCli(["fixtures", "--root", root, "--case", "healthy-fixture", "--execute", "--format", "json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const suite = JSON.parse(result.stdout);
+  assert.deepEqual(suite.selection.selected, ["healthy-fixture"]);
+  assert.equal(suite.summary.total, 1);
+});
+
+test("issue intake and history retention produce auditable offline packets", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-intake-cli-"));
+  fs.mkdirSync(path.join(directory, ".github", "ISSUE_TEMPLATE"), { recursive: true });
+  fs.writeFileSync(path.join(directory, ".github", "ISSUE_TEMPLATE", "bug.yml"), [
+    "name: Bug report",
+    "labels:",
+    "  - bug",
+    "body:",
+    "  - type: textarea",
+    "    id: reproduction",
+    "    validations:",
+    "      required: true"
+  ].join("\n"));
+  fs.writeFileSync(path.join(directory, "issue.json"), JSON.stringify({ title: "A reproducible bug", body: "Details", template: "bug.yml", labels: ["bug"], fields: { reproduction: "node test.js" } }));
+  const intake = runCli(["intake", path.join(directory, "issue.json"), "--root", directory, "--format", "json"]);
+  assert.equal(intake.status, 0, intake.stderr);
+  const packet = JSON.parse(intake.stdout);
+  assert.equal(packet.kind, "issue-intake");
+  assert.equal(packet.summary.status, "pass");
+  assert.equal(packet.selectedTemplate.id, ".github/ISSUE_TEMPLATE/bug.yml");
+  const intakeArtifact = path.join(directory, "intake.json");
+  fs.writeFileSync(intakeArtifact, intake.stdout);
+  const intakeValidation = runCli(["validate", intakeArtifact, "--kind", "issue-intake", "--format", "json"]);
+  assert.equal(intakeValidation.status, 0, intakeValidation.stderr);
+  assert.equal(JSON.parse(intakeValidation.stdout).valid, true);
+
+  const historyPath = path.join(directory, "history.jsonl");
+  const entries = [
+    { schemaVersion: 1, recordedAt: "2026-08-11T00:00:00.000Z", status: "pass", score: 100 },
+    { schemaVersion: 1, recordedAt: "2026-08-12T00:00:00.000Z", status: "pass", score: 98 }
+  ];
+  fs.writeFileSync(historyPath, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+  const preview = runCli(["history", "--root", directory, "--history-path", "history.jsonl", "--retain", "1", "--format", "json"]);
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.equal(JSON.parse(preview.stdout).retention.removed, 1);
+  assert.equal(fs.readFileSync(historyPath, "utf8").trim().split(/\r?\n/).length, 2);
+  const applied = runCli(["history", "--root", directory, "--history-path", "history.jsonl", "--retain", "1", "--apply-retention", "--format", "json"]);
+  assert.equal(applied.status, 0, applied.stderr);
+  assert.equal(JSON.parse(applied.stdout).retention.applied, true);
+  assert.equal(fs.readFileSync(historyPath, "utf8").trim().split(/\r?\n/).length, 1);
+});
+
 test("fixture command enforces declarative status and check contracts", () => {
   const result = runCli(["fixtures", "--root", root, "--execute", "--format", "json"]);
   assert.equal(result.status, 0, result.stderr);
@@ -128,7 +178,13 @@ test("init refuses to overwrite configuration without --force", () => {
 
 test("MCP server exposes read-only tools and structured inventory", () => {
   const proofBundle = path.join(healthy, ".mcp-proof-bundle");
+  const intakeDirectory = path.join(healthy, ".mcp-issue-templates");
+  const intakePath = path.join(healthy, ".mcp-issue.json");
   fs.rmSync(proofBundle, { recursive: true, force: true });
+  fs.rmSync(intakeDirectory, { recursive: true, force: true });
+  fs.mkdirSync(intakeDirectory, { recursive: true });
+  fs.writeFileSync(path.join(intakeDirectory, "bug.yml"), "name: Bug\nlabels:\n  - bug\nbody:\n  - type: textarea\n    id: reproduction\n    validations:\n      required: true\n");
+  fs.writeFileSync(intakePath, JSON.stringify({ title: "MCP issue", template: "bug.yml", labels: ["bug"], fields: { reproduction: "reproduce" } }));
   const proof = runCli(["proof", "--root", healthy, "--execute", "--format", "json", "--bundle", proofBundle]);
   assert.equal(proof.status, 0, proof.stderr);
   const requests = [
@@ -143,15 +199,19 @@ test("MCP server exposes read-only tools and structured inventory", () => {
     { jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "repo_doctor", arguments: {} } },
     { jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "repo_ledger", arguments: {} } },
     { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "repo_proof_verify", arguments: { bundlePath: ".mcp-proof-bundle" } } },
-    { jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "repo_fixtures", arguments: {} } }
+    { jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "repo_fixtures", arguments: {} } },
+    { jsonrpc: "2.0", id: 13, method: "tools/call", params: { name: "repo_intake", arguments: { issuePath: ".mcp-issue.json", templatesPath: ".mcp-issue-templates" } } },
+    { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "repo_history_retention", arguments: { keepLast: 5 } } }
   ].map((request) => JSON.stringify(request)).join("\n") + "\n";
   const result = spawnSync(process.execPath, [bin, "mcp", "--root", healthy], { input: requests, encoding: "utf8" });
   fs.rmSync(proofBundle, { recursive: true, force: true });
+  fs.rmSync(intakeDirectory, { recursive: true, force: true });
+  fs.rmSync(intakePath, { force: true });
   assert.equal(result.status, 0, result.stderr);
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.equal(responses[0].result.protocolVersion, "2024-11-05");
-  assert.equal(responses[0].result.serverInfo.version, "0.9.0");
-  assert.equal(responses[1].result.tools.length, 12);
+  assert.equal(responses[0].result.serverInfo.version, "0.10.0");
+  assert.equal(responses[1].result.tools.length, 14);
   assert.ok(responses[2].result.structuredContent.fileCount >= 4);
   assert.ok(Array.isArray(responses[3].result.structuredContent.items));
   assert.equal(responses[4].result.structuredContent.kind, "change-review");
@@ -163,6 +223,9 @@ test("MCP server exposes read-only tools and structured inventory", () => {
   assert.equal(responses[10].result.structuredContent.kind, "proof-verification");
   assert.equal(responses[10].result.structuredContent.valid, true);
   assert.equal(responses[11].result.structuredContent.kind, "fixture-suite");
+  assert.equal(responses[12].result.structuredContent.kind, "issue-intake");
+  assert.equal(responses[13].result.structuredContent.kind, "history-retention");
+  assert.equal(responses[13].result.structuredContent.applied, false);
 });
 
 test("baseline, exceptions, and ledger CLI commands create auditable artifacts", () => {

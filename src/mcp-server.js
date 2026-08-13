@@ -8,9 +8,11 @@ const { buildVerificationReport } = require("./engine");
 const { buildDoctorReport } = require("./doctor");
 const { DEFAULT_EXCEPTIONS_PATH } = require("./exceptions");
 const { DEFAULT_LEDGER_PATH, verifyLedger } = require("./ledger");
+const { DEFAULT_HISTORY_PATH, planHistoryRetention, readHistory } = require("./history");
 const { evaluateBaseline } = require("./baseline");
 const { validateReport } = require("./validate");
 const { DEFAULT_FIXTURE_MANIFEST, runFixtureSuite } = require("./fixtures");
+const { DEFAULT_ISSUE_TEMPLATE_DIRECTORY, buildIssueIntake } = require("./intake");
 const { verifyProofBundle } = require("./proof");
 
 function reply(id, result) {
@@ -72,7 +74,9 @@ async function handleRequest(root, request) {
         { name: "repo_ledger", description: "Verify the append-only maintenance ledger without modifying it.", inputSchema: { type: "object", properties: { ledgerPath: { type: "string" } } } },
         { name: "repo_baseline", description: "Evaluate two repository reports against a deterministic regression budget.", inputSchema: { type: "object", properties: { baselinePath: { type: "string" }, currentPath: { type: "string" }, maxNewFailures: { type: "integer", minimum: 0 }, maxNewWarnings: { type: "integer", minimum: 0 }, maxScoreDrop: { type: "integer", minimum: 0 } }, required: ["baselinePath", "currentPath"] } },
         { name: "repo_proof_verify", description: "Verify a proof bundle and its referenced evidence hashes without modifying the repository.", inputSchema: { type: "object", properties: { bundlePath: { type: "string" } }, required: ["bundlePath"] } },
-        { name: "repo_fixtures", description: "Run the repository's declarative fixture contract suite without executing project commands.", inputSchema: { type: "object", properties: { fixturesPath: { type: "string" }, applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } }
+        { name: "repo_fixtures", description: "Run the repository's declarative fixture contract suite without executing project commands.", inputSchema: { type: "object", properties: { fixturesPath: { type: "string" }, caseIds: { type: "array", items: { type: "string" } }, applyExceptions: { type: "boolean" }, exceptionsPath: { type: "string" } } } },
+        { name: "repo_intake", description: "Build a read-only issue-intake evidence packet from a local JSON payload and repository issue templates.", inputSchema: { type: "object", properties: { issuePath: { type: "string" }, templatesPath: { type: "string" } }, required: ["issuePath"] } },
+        { name: "repo_history_retention", description: "Preview a privacy-preserving history retention policy without modifying the repository.", inputSchema: { type: "object", properties: { historyPath: { type: "string" }, keepLast: { type: "integer", minimum: 0 } }, required: ["keepLast"] } }
       ]
     });
     return;
@@ -156,8 +160,24 @@ async function handleRequest(root, request) {
   }
   if (name === "repo_fixtures") {
     const fixturesPath = typeof args.fixturesPath === "string" ? args.fixturesPath : DEFAULT_FIXTURE_MANIFEST;
-    const suite = runFixtureSuite(root, fixturesPath, { execute: false, allowExecute: false, applyExceptions: Boolean(args.applyExceptions), exceptionsPath: typeof args.exceptionsPath === "string" ? args.exceptionsPath : undefined });
+    const suite = runFixtureSuite(root, fixturesPath, { execute: false, allowExecute: false, caseIds: Array.isArray(args.caseIds) ? args.caseIds : [], applyExceptions: Boolean(args.applyExceptions), exceptionsPath: typeof args.exceptionsPath === "string" ? args.exceptionsPath : undefined });
     reply(id, { content: [{ type: "text", text: JSON.stringify(suite, null, 2) }], structuredContent: suite });
+    return;
+  }
+  if (name === "repo_intake") {
+    const issuePath = safeRepositoryPath(root, args.issuePath, "issue payload");
+    const relativeIssuePath = path.relative(path.resolve(root), issuePath).split(path.sep).join("/");
+    const templatesPath = typeof args.templatesPath === "string" ? args.templatesPath : DEFAULT_ISSUE_TEMPLATE_DIRECTORY;
+    const packet = buildIssueIntake(root, relativeIssuePath, { templatesPath });
+    reply(id, { content: [{ type: "text", text: JSON.stringify(packet, null, 2) }], structuredContent: packet });
+    return;
+  }
+  if (name === "repo_history_retention") {
+    const historyPath = typeof args.historyPath === "string" ? args.historyPath : DEFAULT_HISTORY_PATH;
+    const history = readHistory(root, historyPath);
+    const retention = planHistoryRetention(history.entries, args.keepLast);
+    const result = { ...retention, path: historyPath, errors: history.errors };
+    reply(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], structuredContent: result });
     return;
   }
   errorReply(id, -32602, `Unknown tool: ${name}`);

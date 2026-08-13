@@ -77,6 +77,47 @@ function appendHistory(root, report, relative = DEFAULT_HISTORY_PATH, { recorded
   return { path: file, entry };
 }
 
+function planHistoryRetention(entries, keepLast) {
+  if (!Number.isInteger(keepLast) || keepLast < 0) throw new Error("keepLast must be a non-negative integer");
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  const retainedEntries = keepLast === 0 ? [] : safeEntries.slice(-keepLast);
+  return {
+    schemaVersion: 1,
+    kind: "history-retention",
+    keepLast,
+    total: safeEntries.length,
+    kept: retainedEntries.length,
+    removed: safeEntries.length - retainedEntries.length,
+    applied: false,
+    retainedEntries
+  };
+}
+
+function applyHistoryRetention(root, relative = DEFAULT_HISTORY_PATH, keepLast) {
+  const history = readHistory(root, relative);
+  if (history.errors.length) throw new Error(`refusing to rewrite history with parse errors: ${history.errors.join("; ")}`);
+  const plan = planHistoryRetention(history.entries, keepLast);
+  const file = resolveHistoryPath(root, relative);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, plan.retainedEntries.map((entry) => JSON.stringify(entry)).join("\n") + (plan.retainedEntries.length ? "\n" : ""), "utf8");
+  return { ...plan, path: relative, applied: true };
+}
+
+function formatHistoryRetentionMarkdown(result) {
+  const lines = [
+    "# ContribProof history retention",
+    "",
+    `- Status: **${result.applied ? "applied" : "preview"}**`,
+    `- Keep last: **${result.keepLast}**`,
+    `- Existing entries: **${result.total}**`,
+    `- Retained: **${result.kept}**`,
+    `- Removed: **${result.removed}**`,
+    ""
+  ];
+  if (!result.applied) lines.push("No history file was modified. Re-run with an explicit apply flag to write this retention plan.", "");
+  return `${lines.join("\n").trim()}\n`;
+}
+
 function summarizeHistory(entries) {
   const safeEntries = Array.isArray(entries) ? entries : [];
   const scores = safeEntries.map((entry) => entry.score).filter((score) => Number.isInteger(score));
@@ -129,8 +170,11 @@ function formatHistoryMarkdown(summary) {
 module.exports = {
   DEFAULT_HISTORY_PATH,
   appendHistory,
+  applyHistoryRetention,
   formatHistoryMarkdown,
+  formatHistoryRetentionMarkdown,
   historyEntry,
+  planHistoryRetention,
   readHistory,
   resolveHistoryPath,
   summarizeHistory

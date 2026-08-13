@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/history-retention.schema.json",
+  "title": "ContribProof history retention result",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "keepLast", "total", "kept", "removed", "applied", "retainedEntries"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "history-retention" },
+    "path": { "type": "string" },
+    "keepLast": { "type": "integer", "minimum": 0 },
+    "total": { "type": "integer", "minimum": 0 },
+    "kept": { "type": "integer", "minimum": 0 },
+    "removed": { "type": "integer", "minimum": 0 },
+    "applied": { "type": "boolean" },
+    "retainedEntries": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": false
+}

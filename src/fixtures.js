@@ -89,15 +89,30 @@ function runFixtureCase(root, item, options = {}) {
   };
 }
 
+function selectFixtureCases(cases, requestedIds = []) {
+  const requested = [...new Set((Array.isArray(requestedIds) ? requestedIds : []).filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))];
+  if (!requested.length) return { requested: [], cases, errors: [] };
+  const available = new Set(cases.map((item) => item.id));
+  const unknown = requested.filter((id) => !available.has(id));
+  return {
+    requested,
+    cases: cases.filter((item) => requested.includes(item.id)),
+    errors: unknown.length ? [`requested fixture case(s) not found: ${unknown.join(", ")}`] : []
+  };
+}
+
 function runFixtureSuite(root, relative = DEFAULT_FIXTURE_MANIFEST, options = {}) {
   const manifestResult = readFixtureManifest(root, relative);
-  if (manifestResult.errors.length) return { schemaVersion: 1, kind: "fixture-suite", path: relative, valid: false, summary: { total: 0, passed: 0, failed: 0 }, cases: [], errors: manifestResult.errors };
-  const cases = manifestResult.manifest.cases.map((item) => runFixtureCase(root, item, options));
+  if (manifestResult.errors.length) return { schemaVersion: 1, kind: "fixture-suite", path: relative, selection: { requested: [], selected: [] }, valid: false, summary: { total: 0, passed: 0, failed: 0 }, cases: [], errors: manifestResult.errors };
+  const selection = selectFixtureCases(manifestResult.manifest.cases, options.caseIds);
+  if (selection.errors.length) return { schemaVersion: 1, kind: "fixture-suite", path: relative, selection: { requested: selection.requested, selected: selection.cases.map((item) => item.id) }, valid: false, summary: { total: 0, passed: 0, failed: 0 }, cases: [], errors: selection.errors };
+  const cases = selection.cases.map((item) => runFixtureCase(root, item, options));
   const passed = cases.filter((item) => item.passed).length;
   return {
     schemaVersion: 1,
     kind: "fixture-suite",
     path: relative,
+    selection: { requested: selection.requested, selected: selection.cases.map((item) => item.id) },
     valid: passed === cases.length,
     summary: { total: cases.length, passed, failed: cases.length - passed },
     cases,
@@ -112,6 +127,7 @@ function formatFixtureSuiteMarkdown(result) {
     `- Status: **${result.valid ? "pass" : "fail"}**`,
     `- Cases: **${result.summary.passed}/${result.summary.total}** passed`,
     `- Manifest: \`${result.path}\``,
+    `- Selected cases: **${result.selection?.selected?.length || 0}${result.selection?.requested?.length ? ` (requested: ${result.selection.requested.join(", ")})` : ""}**`,
     "",
     "## Cases",
     ""
@@ -124,4 +140,4 @@ function formatFixtureSuiteMarkdown(result) {
   return `${lines.join("\n").trim()}\n`;
 }
 
-module.exports = { DEFAULT_FIXTURE_MANIFEST, FIXTURE_STATUSES, formatFixtureSuiteMarkdown, readFixtureManifest, resolveFixturePath, runFixtureCase, runFixtureSuite };
+module.exports = { DEFAULT_FIXTURE_MANIFEST, FIXTURE_STATUSES, formatFixtureSuiteMarkdown, readFixtureManifest, resolveFixturePath, runFixtureCase, runFixtureSuite, selectFixtureCases };

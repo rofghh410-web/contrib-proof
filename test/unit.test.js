@@ -19,7 +19,7 @@ const { buildReviewPacket, formatReviewMarkdown, parseDiffPatch } = require("../
 const { evaluateGate, formatGateMarkdown, validateGatePolicy } = require("../src/gate");
 const { buildGithubAnnotations, formatGithubAnnotations, normalizeAnnotationPath } = require("../src/annotations");
 const { buildReleaseReadiness, formatReleaseMarkdown } = require("../src/release");
-const { appendHistory, historyEntry, readHistory, resolveHistoryPath, summarizeHistory } = require("../src/history");
+const { appendHistory, applyHistoryRetention, historyEntry, planHistoryRetention, readHistory, resolveHistoryPath, summarizeHistory } = require("../src/history");
 const { evaluateBaseline, formatBaselineMarkdown } = require("../src/baseline");
 const { applyExceptions, buildExceptionChecks, readExceptions, resolveExceptionsPath } = require("../src/exceptions");
 const { buildDoctorReport } = require("../src/doctor");
@@ -27,8 +27,9 @@ const { appendLedger, readLedger, resolveLedgerPath, verifyLedger } = require(".
 const { buildVerificationReport } = require("../src/engine");
 const { createProofManifest, verifyProofBundle, writeProofBundle } = require("../src/proof");
 const { createProofAttestation, generateAttestationKeyPair, verifyProofAttestation } = require("../src/attestation");
-const { runFixtureSuite } = require("../src/fixtures");
-const { validateExecutionContext, validateFixtureSuite, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification } = require("../src/validate");
+const { runFixtureSuite, selectFixtureCases } = require("../src/fixtures");
+const { buildIssueIntake } = require("../src/intake");
+const { validateExecutionContext, validateFixtureSuite, validateHistoryRetention, validateIssueIntake, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification } = require("../src/validate");
 
 test("shared verification engine records reproducible execution context", () => {
   const fixtureRoot = path.resolve(__dirname, "fixtures", "healthy");
@@ -97,6 +98,32 @@ test("fixture suite is declarative and validates as a public artifact", () => {
   assert.equal(suite.summary.total, 2);
   assert.equal(validateFixtureSuite(suite).valid, true);
   assert.throws(() => runFixtureSuite(fixtureRoot, "../outside-fixtures.json"), /inside the repository root/);
+});
+
+test("fixture selection is explicit and unknown cases fail closed", () => {
+  const selected = selectFixtureCases([{ id: "package-a" }, { id: "package-b" }], ["package-b"]);
+  assert.deepEqual(selected.cases.map((item) => item.id), ["package-b"]);
+  assert.deepEqual(selectFixtureCases([{ id: "package-a" }], ["missing"]).errors, ["requested fixture case(s) not found: missing"]);
+});
+
+test("issue intake minimizes payload contents and history retention refuses malformed files", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-operations-"));
+  fs.mkdirSync(path.join(directory, ".github", "ISSUE_TEMPLATE"), { recursive: true });
+  fs.writeFileSync(path.join(directory, ".github", "ISSUE_TEMPLATE", "bug.yml"), "name: Bug\nlabels:\n  - bug\nbody:\n  - type: textarea\n    id: reproduction\n    validations:\n      required: true\n");
+  fs.writeFileSync(path.join(directory, "issue.json"), JSON.stringify({ title: "Bug", body: "api_key=super-secret-value", template: "bug.yml", labels: ["bug"], fields: { reproduction: "run" } }));
+  const packet = buildIssueIntake(directory, "issue.json");
+  assert.equal(packet.kind, "issue-intake");
+  assert.equal(packet.summary.status, "needs-attention");
+  assert.doesNotMatch(JSON.stringify(packet), /super-secret-value/);
+  assert.ok(packet.checks.some((check) => check.id === "intake:sensitive-content"));
+  assert.equal(validateIssueIntake(packet).valid, true);
+
+  const historyPath = path.join(directory, "history.jsonl");
+  fs.writeFileSync(historyPath, "{bad json}\n");
+  assert.throws(() => applyHistoryRetention(directory, "history.jsonl", 1), /refusing to rewrite history/);
+  const retention = planHistoryRetention([{ score: 1 }, { score: 2 }], 1);
+  assert.deepEqual(retention.retainedEntries, [{ score: 2 }]);
+  assert.equal(validateHistoryRetention(retention).valid, true);
 });
 
 test("GitHub annotations escape untrusted text and keep evidence paths relative", () => {

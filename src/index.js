@@ -13,6 +13,7 @@ module.exports = {
   ...require("./gate"),
   ...require("./html"),
   ...require("./history"),
+  ...require("./intake"),
   ...require("./ledger"),
   ...require("./openai"),
   ...require("./plan"),
