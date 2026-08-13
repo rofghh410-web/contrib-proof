@@ -21,7 +21,7 @@ function runCli(args, cwd = root) {
 test("version flag reports the public release version", () => {
   const result = runCli(["--version"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "0.8.2");
+  assert.equal(result.stdout.trim(), "0.9.0");
 });
 
 test("healthy fixture passes executable verification", () => {
@@ -63,6 +63,32 @@ test("proof command writes a complete bundle", () => {
   const verified = runCli(["proof-verify", bundle, "--root", healthy, "--format", "json"]);
   assert.equal(verified.status, 0, verified.stderr);
   assert.equal(JSON.parse(verified.stdout).valid, true);
+});
+
+test("attestation CLI signs and verifies a proof bundle against a public trust root", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-attestation-cli-"));
+  const bundle = path.join(directory, "bundle");
+  const privateKey = path.join(directory, "private.pem");
+  const publicKey = path.join(directory, "public.pem");
+  const keygen = runCli(["attest-keygen", "--private-key", privateKey, "--public-key", publicKey]);
+  assert.equal(keygen.status, 0, keygen.stderr);
+  assert.ok(JSON.parse(keygen.stdout).publicKeySha256);
+  const proof = runCli(["proof", "--root", healthy, "--execute", "--format", "json", "--bundle", bundle]);
+  assert.equal(proof.status, 0, proof.stderr);
+  const signed = runCli(["attest", bundle, "--private-key", privateKey, "--key-id", "cli-key"]);
+  assert.equal(signed.status, 0, signed.stderr);
+  const attestationPath = path.join(bundle, "attestation.json");
+  assert.ok(fs.existsSync(attestationPath));
+  const verification = runCli(["attest-verify", attestationPath, "--public-key", publicKey, "--bundle", bundle, "--format", "json"]);
+  assert.equal(verification.status, 0, verification.stderr);
+  const result = JSON.parse(verification.stdout);
+  assert.equal(result.valid, true);
+  assert.equal(result.signatureValid, true);
+  assert.equal(result.keyTrusted, true);
+  assert.equal(result.subjectValid, true);
+  const validation = runCli(["validate", attestationPath, "--kind", "proof-attestation", "--format", "json"]);
+  assert.equal(validation.status, 0, validation.stderr);
+  assert.equal(JSON.parse(validation.stdout).valid, true);
 });
 
 test("fixture command enforces declarative status and check contracts", () => {
@@ -124,7 +150,7 @@ test("MCP server exposes read-only tools and structured inventory", () => {
   assert.equal(result.status, 0, result.stderr);
   const responses = result.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.equal(responses[0].result.protocolVersion, "2024-11-05");
-  assert.equal(responses[0].result.serverInfo.version, "0.8.2");
+  assert.equal(responses[0].result.serverInfo.version, "0.9.0");
   assert.equal(responses[1].result.tools.length, 12);
   assert.ok(responses[2].result.structuredContent.fileCount >= 4);
   assert.ok(Array.isArray(responses[3].result.structuredContent.items));

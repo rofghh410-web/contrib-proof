@@ -2,7 +2,7 @@
 
 Evidence-first contributor-path verification for open-source repositories.
 
-> **ContribProof 0.8 is a major upgrade.** The release adds reproducible execution context, offline proof verification, declarative fixture contracts, release-readiness evidence, regression budgets, expiring policy exceptions, and a tamper-evident maintainer ledger. Use the [v0.8.2 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.8.2), which includes the GitHub Action manifest compatibility hotfix.
+> **ContribProof 0.9 is a trust-boundary upgrade.** The release adds Ed25519 proof attestations, explicit maintainer trust roots, offline attestation verification, reproducible execution context, offline proof verification, declarative fixture contracts, release-readiness evidence, regression budgets, expiring policy exceptions, and a tamper-evident maintainer ledger. Use the [v0.9.0 release](https://github.com/rofghh410-web/contrib-proof/releases/tag/v0.9.0).
 
 ContribProof answers a practical maintainer question:
 
@@ -58,6 +58,16 @@ Verify that a bundle still matches its report and repository evidence after it h
 contrib-proof proof-verify artifacts/contrib-proof --root . --format markdown
 ```
 
+Create an Ed25519 trust root, sign a proof bundle, and verify it against the public key:
+
+```bash
+contrib-proof attest-keygen --private-key .contrib-proof/private.pem --public-key .contrib-proof/public.pem
+contrib-proof attest artifacts/contrib-proof --private-key .contrib-proof/private.pem
+contrib-proof attest-verify artifacts/contrib-proof/attestation.json --public-key .contrib-proof/public.pem --bundle artifacts/contrib-proof --format markdown
+```
+
+The private key is never included in the proof bundle. The attestation signs a canonical payload containing the report, evidence, and bundle SHA-256 identities; verification can additionally compare that subject with a selected `manifest.json`.
+
 Run the repository's declarative regression fixtures:
 
 ```bash
@@ -81,6 +91,7 @@ artifacts/contrib-proof/
 ├── gate.md           # maintainer-readable gate decision
 ├── release.json      # present for release-readiness runs
 ├── release.md        # maintainer-readable release readiness
+├── attestation.json  # optional Ed25519 signature over the proof identity
 └── (optional ledger)  # recorded separately as an append-only JSONL chain
 ```
 
@@ -105,7 +116,13 @@ contrib-proof validate artifacts/contrib-proof/report.json --kind report --forma
 contrib-proof validate artifacts/contrib-proof/manifest.json --kind proof-manifest --format json
 ```
 
-The report, review, gate, release, baseline, doctor, exception, ledger, execution-context, fixture, and proof contracts are documented in [`schemas/`](schemas/). The validator is intentionally small and dependency-free; it checks the fields ContribProof promises, not every possible repository-specific extension.
+The report, review, gate, release, baseline, doctor, exception, ledger, execution-context, fixture, proof, and attestation contracts are documented in [`schemas/`](schemas/). The validator is intentionally small and dependency-free; it checks the fields ContribProof promises, not every possible repository-specific extension.
+
+### Signed proof attestations
+
+A proof manifest establishes integrity, but a hash alone does not identify who approved that evidence. The optional attestation layer adds an explicit trust root without sending repository contents anywhere. `attest-keygen` creates an Ed25519 key pair, `attest` signs only the canonical proof identity, and `attest-verify` checks the signature, the public-key fingerprint, and—when `--bundle` is supplied—the selected manifest subject. Treat the public key as a maintainer-controlled trust root and rotate it through the repository's normal secret-management process; ContribProof does not publish or distribute keys.
+
+The attestation is advisory evidence rather than an authorization system. It does not grant merge or release permissions, and it does not make an untrusted checkout trusted. Keep the private key outside the repository and use a separate key per maintainer or automation trust boundary.
 
 ## Architecture
 
@@ -150,7 +167,7 @@ Commands are declared as an executable plus an argument array:
 }
 ```
 
-ContribProof never turns this into a shell string. Commands run only when `--execute` is supplied, with `shell: false`, a timeout, bounded output, and a reduced environment that excludes API keys and tokens by default.
+ContribProof never turns this into a shell string. Commands run only when `--execute` is supplied, with `shell: false`, a timeout, streamed output caps, detached process-group cleanup, and a reduced environment that excludes API keys and tokens by default. A timeout sends SIGTERM first and escalates to SIGKILL after a bounded grace period on Unix-like systems.
 
 ### Change-impact signals
 
@@ -354,7 +371,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: rofghh410-web/contrib-proof@v0.8.2
+      - uses: rofghh410-web/contrib-proof@v0.9.0
         with:
           execute: ${{ github.event_name == 'push' && 'true' || 'false' }}
           diff: "true"
@@ -425,7 +442,7 @@ The adapter sends a redacted report, not the whole checkout. It instructs the mo
 
 ## Project status
 
-ContribProof is a functioning 0.8 release. The current release remains dependency-free and adds a reproducibility layer: a shared verification engine, execution-context evidence, offline proof verification, and declarative fixture contracts while retaining the maintainer control plane from 0.7. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including stronger process isolation, language adapters, issue-intake evidence, and evaluated model explanations.
+ContribProof is a functioning 0.9 release. The current release remains dependency-free and adds a signed trust-boundary layer: Ed25519 proof attestations, explicit maintainer key fingerprints, detached verification, streamed command-output limits, and bounded process-group cleanup while retaining the reproducibility and maintainer-control planes from 0.8. Planned work is documented in [`docs/ROADMAP.md`](docs/ROADMAP.md), including signed ledger attestations, key-rotation metadata, language adapters, issue-intake evidence, and evaluated model explanations.
 
 ## Contributing
 

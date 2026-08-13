@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rofghh410-web/contrib-proof/schemas/proof-attestation.schema.json",
+  "title": "ContribProof Ed25519 proof attestation",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "algorithm", "createdAt", "subject", "key", "signature"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "proof-attestation" },
+    "algorithm": { "const": "ed25519" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "subject": {
+      "type": "object",
+      "required": ["reportHash", "evidenceHash", "bundleHash"],
+      "properties": {
+        "reportHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "evidenceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bundleHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "key": {
+      "type": "object",
+      "required": ["keyId", "publicKeySha256"],
+      "properties": {
+        "keyId": { "type": "string", "minLength": 1 },
+        "publicKeySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "signature": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" }
+  },
+  "additionalProperties": false
+}

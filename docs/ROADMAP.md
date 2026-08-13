@@ -2,6 +2,16 @@
 
 The project is deliberately staged around real maintainer feedback rather than feature count.
 
+## 0.9 — Trust-boundary evidence
+
+- [x] Ed25519 proof attestations with explicit maintainer key fingerprints;
+- [x] detached attestation verification with optional proof-manifest subject matching;
+- [x] CLI, schema, documentation, Action, and regression-test integration;
+- [x] bounded streaming output for configured commands;
+- [x] Unix process-group timeout cleanup with SIGTERM/SIGKILL escalation;
+- [ ] signed ledger attestations with an explicit ledger-specific trust root;
+- [ ] key rotation and revocation metadata for long-lived CI installations.
+
 ## 0.1 — Evidence protocol
 
 - [x] configurable repository checks;

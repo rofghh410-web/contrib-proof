@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const readline = require("node:readline");
+const packageJson = require("../package.json");
 const { buildInventory } = require("./inventory");
 const { buildRemediationPlan } = require("./plan");
 const { buildVerificationReport } = require("./engine");
@@ -52,7 +53,7 @@ async function handleRequest(root, request) {
     reply(id, {
       protocolVersion: request.params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "contrib-proof", version: "0.8.2" }
+      serverInfo: { name: "contrib-proof", version: packageJson.version }
     });
     return;
   }

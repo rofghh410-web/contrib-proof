@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const packageJson = require("../package.json");
 const { compareReports, formatComparisonMarkdown } = require("./compare");
 const { evaluateBaseline, formatBaselineMarkdown } = require("./baseline");
 const { loadConfig, writeDefaultConfig } = require("./config");
@@ -9,13 +10,14 @@ const { explainReport } = require("./openai");
 const { buildRemediationPlan, formatPlanMarkdown } = require("./plan");
 const { createProofManifest, formatProofVerificationMarkdown, verifyProofBundle, writeProofBundle } = require("./proof");
 const { formatReport, writeReport } = require("./report");
-const { formatValidation, validateBaseline, validateDoctor, validateExceptions, validateFixtureSuite, validateGate, validatePlan, validateProofManifest, validateProofVerification, validateRelease, validateReport } = require("./validate");
+const { formatValidation, validateBaseline, validateDoctor, validateExceptions, validateFixtureSuite, validateGate, validatePlan, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification, validateRelease, validateReport } = require("./validate");
 const { formatGithubAnnotations } = require("./annotations");
 const { appendHistory, DEFAULT_HISTORY_PATH, formatHistoryMarkdown, readHistory, summarizeHistory } = require("./history");
 const { buildDoctorReport, formatDoctorMarkdown } = require("./doctor");
 const { DEFAULT_EXCEPTIONS_PATH } = require("./exceptions");
 const { appendLedger, DEFAULT_LEDGER_PATH, formatLedgerMarkdown, verifyLedger } = require("./ledger");
 const { DEFAULT_FIXTURE_MANIFEST, formatFixtureSuiteMarkdown, runFixtureSuite } = require("./fixtures");
+const { createProofAttestationFromFiles, formatProofAttestationVerificationMarkdown, generateAttestationKeyPair, verifyProofAttestationFromFiles } = require("./attestation");
 
 function parseNonNegativeInteger(value, flag) {
   const parsed = Number(value);
@@ -31,6 +33,9 @@ Usage:
   contrib-proof verify [--root PATH] [--execute] [--diff] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--strict] [--github-annotations]
   contrib-proof proof [same options as verify; writes a complete proof bundle]
   contrib-proof proof-verify BUNDLE [--root PATH] [--format markdown|json] [--output PATH]
+  contrib-proof attest-keygen --private-key PATH --public-key PATH [--force] [--output PATH]
+  contrib-proof attest BUNDLE --private-key PATH [--key-id ID] [--output PATH]
+  contrib-proof attest-verify ATTESTATION.json --public-key PATH [--bundle BUNDLE] [--format markdown|json] [--output PATH]
   contrib-proof review [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--github-annotations]
   contrib-proof gate [--root PATH] [--base REF] [--format FORMAT] [--output PATH] [--bundle PATH] [--max-risk LEVEL] [--require-review] [--fail-on-warnings] [--github-annotations]
   contrib-proof release [--root PATH] [--since REF] [--version VERSION] [--format FORMAT] [--output PATH] [--bundle PATH]
@@ -41,7 +46,7 @@ Usage:
   contrib-proof compare BASELINE.json CURRENT.json [--format FORMAT] [--output PATH] [--strict]
   contrib-proof baseline BASELINE.json CURRENT.json [--max-new-failures N] [--max-new-warnings N] [--max-score-drop N] [--format markdown|json] [--output PATH]
   contrib-proof plan REPORT.json [--format markdown|json] [--output PATH]
-  contrib-proof validate ARTIFACT.json [--kind report|plan|gate|release|baseline|doctor|exceptions|fixtures|proof-manifest|proof-verification] [--format markdown|json] [--output PATH]
+  contrib-proof validate ARTIFACT.json [--kind report|plan|gate|release|baseline|doctor|exceptions|fixtures|proof-manifest|proof-verification|proof-attestation|proof-attestation-verification] [--format markdown|json] [--output PATH]
   contrib-proof mcp [--root PATH]
   contrib-proof explain REPORT.json [--model MODEL]
 
@@ -81,7 +86,10 @@ function parseArgs(argv) {
     fixturesPath: DEFAULT_FIXTURE_MANIFEST,
     applyExceptions: false,
     baselinePolicy: {},
-    gateOverrides: {}
+    gateOverrides: {},
+    privateKeyPath: null,
+    publicKeyPath: null,
+    keyId: null
   };
   let index = 0;
   if (argv[0] === "--version" && argv.length === 1) {
@@ -141,6 +149,15 @@ function parseArgs(argv) {
     } else if (arg === "--force") {
       options.force = true;
       index += 1;
+    } else if (arg === "--private-key") {
+      options.privateKeyPath = path.resolve(argv[index + 1] || "");
+      index += 2;
+    } else if (arg === "--public-key") {
+      options.publicKeyPath = path.resolve(argv[index + 1] || "");
+      index += 2;
+    } else if (arg === "--key-id") {
+      options.keyId = argv[index + 1] || null;
+      index += 2;
     } else if (arg === "--model") {
       options.model = argv[index + 1] || undefined;
       index += 2;
@@ -180,7 +197,7 @@ function parseArgs(argv) {
     } else if ((options.command === "compare" || options.command === "baseline") && !arg.startsWith("-") && options.reportPaths.length < 2) {
       options.reportPaths.push(path.resolve(arg));
       index += 1;
-    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate" || options.command === "proof-verify") && !arg.startsWith("-")) {
+    } else if (!options.inputPath && (options.command === "explain" || options.command === "plan" || options.command === "validate" || options.command === "proof-verify" || options.command === "attest" || options.command === "attest-verify") && !arg.startsWith("-")) {
       options.inputPath = path.resolve(arg);
       options.reportPath = options.inputPath;
       index += 1;
@@ -204,7 +221,7 @@ async function run(argv) {
     return;
   }
   if (options.command === "--version" || options.command === "version") {
-    console.log("0.8.2");
+    console.log(packageJson.version);
     return;
   }
   if (options.command === "init") {
@@ -243,6 +260,33 @@ async function run(argv) {
     process.exitCode = verification.valid ? 0 : 1;
     return;
   }
+  if (options.command === "attest-keygen") {
+    const generated = generateAttestationKeyPair(options.privateKeyPath, options.publicKeyPath, { force: options.force });
+    const content = `${JSON.stringify(generated, null, 2)}\n`;
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    return;
+  }
+  if (options.command === "attest") {
+    if (!options.inputPath) throw new Error("attest requires a proof bundle directory");
+    if (!options.privateKeyPath) throw new Error("attest requires --private-key PATH");
+    const attestation = createProofAttestationFromFiles(options.inputPath, options.privateKeyPath, { keyId: options.keyId });
+    const content = `${JSON.stringify(attestation, null, 2)}\n`;
+    const outputPath = options.output || path.join(path.resolve(options.inputPath), "attestation.json");
+    writeReport(outputPath, content);
+    if (!options.output) process.stdout.write(content);
+    return;
+  }
+  if (options.command === "attest-verify") {
+    if (!options.inputPath) throw new Error("attest-verify requires an attestation JSON path");
+    if (!options.publicKeyPath) throw new Error("attest-verify requires --public-key PATH");
+    const verification = verifyProofAttestationFromFiles(options.inputPath, options.publicKeyPath, options.bundle);
+    const content = options.format === "json" ? `${JSON.stringify(verification, null, 2)}\n` : formatProofAttestationVerificationMarkdown(verification);
+    if (options.output) writeReport(options.output, content);
+    else process.stdout.write(content);
+    process.exitCode = verification.valid ? 0 : 1;
+    return;
+  }
   if (options.command === "explain") {
     if (!options.reportPath) throw new Error("explain requires a JSON report path");
     const report = JSON.parse(fs.readFileSync(options.reportPath, "utf8"));
@@ -273,6 +317,8 @@ async function run(argv) {
     else if (options.kind === "fixtures") result = validateFixtureSuite(artifact);
     else if (options.kind === "proof-manifest") result = validateProofManifest(artifact);
     else if (options.kind === "proof-verification") result = validateProofVerification(artifact);
+    else if (options.kind === "proof-attestation") result = validateProofAttestation(artifact);
+    else if (options.kind === "proof-attestation-verification") result = validateProofAttestationVerification(artifact);
     else result = validateReport(artifact);
     const content = options.format === "json"
       ? `${JSON.stringify(result, null, 2)}\n`
@@ -345,7 +391,7 @@ async function run(argv) {
     process.exitCode = decision.passed ? 0 : 1;
     return;
   }
-  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "release" && options.command !== "plan" && options.command !== "validate" && options.command !== "history" && options.command !== "ledger" && options.command !== "doctor" && options.command !== "baseline" && options.command !== "proof-verify" && options.command !== "fixtures") {
+  if (options.command !== "verify" && options.command !== "diff" && options.command !== "proof" && options.command !== "review" && options.command !== "gate" && options.command !== "release" && options.command !== "plan" && options.command !== "validate" && options.command !== "history" && options.command !== "ledger" && options.command !== "doctor" && options.command !== "baseline" && options.command !== "proof-verify" && options.command !== "fixtures" && options.command !== "attest-keygen" && options.command !== "attest" && options.command !== "attest-verify") {
     throw new Error(`unknown command: ${options.command}\n\n${usage()}`);
   }
   if (options.command === "diff" || options.command === "proof" || options.command === "review" || options.command === "gate" || options.command === "release") options.includeDiff = true;

@@ -63,7 +63,7 @@ The policy engine is intentionally conservative. Missing evidence becomes a warn
 
 ### 7. Controlled runner
 
-Configured commands are represented as `{ run, args }`, never as a shell expression. The current runner uses `shell: false`, bounded output, a timeout, and a reduced environment. The next hardening step is a platform-specific process-group wrapper and an optional container/VM adapter for projects that need stronger isolation.
+Configured commands are represented as `{ run, args }`, never as a shell expression. The runner uses `shell: false`, streamed output caps, a timeout, a reduced environment, and detached process-group cleanup. On Unix-like systems a timeout sends SIGTERM to the process group and escalates to SIGKILL after the configured grace period. This is a bounded cleanup guarantee, not a container or VM security boundary; projects that need stronger isolation still require an external sandbox.
 
 ### 8. Triage and contracts
 
@@ -73,7 +73,7 @@ Configured commands are represented as `{ run, args }`, never as a shell express
 
 `src/proof.js` canonicalizes JSON with sorted object keys and computes SHA-256 hashes for the report and small evidence files. A proof bundle is useful when a maintainer wants to say “this decision was based on exactly these inputs” without uploading the repository.
 
-The hash is an integrity aid, not a digital signature. ContribProof does not currently provide key management or a trust root.
+`src/attestation.js` optionally signs the proof identity with Ed25519. The signed payload contains the report, evidence, and bundle hashes plus a maintainer key identifier and public-key fingerprint. Verification checks the cryptographic signature, the selected trust root, and optionally the local proof manifest subject. The attestation is an integrity and provenance signal, not an authorization system, key registry, or release approval.
 
 ### 10. Shared verification and fixture contracts
 
@@ -101,6 +101,7 @@ The hash is an integrity aid, not a digital signature. ContribProof does not cur
 - Execution-context fields: runtime, Git, configuration, and effective-option provenance inside every verification report.
 - Fixture manifest/suite JSON: declarative status and check-ID regression contracts.
 - Proof verification JSON/Markdown: offline integrity verification of a proof bundle and its evidence files.
+- Proof attestation JSON/Markdown: optional Ed25519 signature and detached trust-root verification for proof identities.
 - GitHub workflow annotations: an opt-in, escaped presentation of report findings for Checks.
 - MCP stdio server: read-only context for coding agents.
 - OpenAI adapter: explicit, advisory explanation of an existing report.

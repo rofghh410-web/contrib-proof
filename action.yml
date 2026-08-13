@@ -78,10 +78,25 @@ inputs:
     description: "Record the generated JSON report in the tamper-evident maintenance ledger."
     required: false
     default: "false"
+  attest:
+    description: "Sign the generated proof bundle with an Ed25519 private key. Requires bundle and private-key-path."
+    required: false
+    default: "false"
+  private-key-path:
+    description: "Path to an existing Ed25519 private key on the runner; never pass the key contents as an argument."
+    required: false
+    default: ""
+  attestation-key-id:
+    description: "Optional stable maintainer key identifier embedded in the attestation."
+    required: false
+    default: ""
 outputs:
   report_path:
     description: "Path to the generated report on the runner."
     value: ${{ steps.run.outputs.report_path }}
+  attestation_path:
+    description: "Path to the optional Ed25519 attestation in the proof bundle."
+    value: ${{ steps.run.outputs.attestation_path }}
 runs:
   using: composite
   steps:
@@ -110,10 +125,22 @@ runs:
         CP_APPLY_EXCEPTIONS: ${{ inputs['apply-exceptions'] }}
         CP_LEDGER_PATH: ${{ inputs['ledger-path'] }}
         CP_RECORD_LEDGER: ${{ inputs['record-ledger'] }}
+        CP_ATTEST: ${{ inputs.attest }}
+        CP_PRIVATE_KEY: ${{ inputs['private-key-path'] }}
+        CP_ATTESTATION_KEY_ID: ${{ inputs['attestation-key-id'] }}
       run: |
         set -uo pipefail
         report_path="${RUNNER_TEMP}/contrib-proof-report.${CP_FORMAT}"
-        if [[ "$CP_FIXTURES" == "true" && ( "$CP_GATE" == "true" || "$CP_RELEASE" == "true" || "$CP_RECORD_LEDGER" == "true" ) ]]; then
+        if [[ "$CP_ATTEST" == "true" && "$CP_FIXTURES" == "true" ]]; then
+          echo "::error::attest cannot be combined with fixtures mode."
+          exit 2
+        elif [[ "$CP_ATTEST" == "true" && -z "$CP_BUNDLE" ]]; then
+          echo "::error::attest requires the bundle input so the signed manifest has a stable location."
+          exit 2
+        elif [[ "$CP_ATTEST" == "true" && -z "$CP_PRIVATE_KEY" ]]; then
+          echo "::error::attest requires private-key-path pointing to an existing Ed25519 private key."
+          exit 2
+        elif [[ "$CP_FIXTURES" == "true" && ( "$CP_GATE" == "true" || "$CP_RELEASE" == "true" || "$CP_RECORD_LEDGER" == "true" ) ]]; then
           echo "::error::fixtures mode cannot be combined with release, gate, or record-ledger."
           exit 2
         elif [[ "$CP_FIXTURES" == "true" ]]; then
@@ -142,6 +169,13 @@ runs:
         set +e
         node "$GITHUB_ACTION_PATH/bin/contrib-proof.js" "${args[@]}"
         status=$?
+        if [[ "$CP_ATTEST" == "true" ]]; then
+          attest_args=(attest "$CP_BUNDLE" --private-key "$CP_PRIVATE_KEY")
+          if [[ -n "$CP_ATTESTATION_KEY_ID" ]]; then attest_args+=(--key-id "$CP_ATTESTATION_KEY_ID"); fi
+          node "$GITHUB_ACTION_PATH/bin/contrib-proof.js" "${attest_args[@]}"
+          attest_status=$?
+          if [[ "$status" == "0" && "$attest_status" != "0" ]]; then status="$attest_status"; fi
+        fi
         if [[ "$CP_RECORD_LEDGER" == "true" ]]; then
           if [[ "$CP_FORMAT" != "json" ]]; then
             echo "::error::record-ledger requires format=json so the report can be validated safely."
@@ -158,4 +192,5 @@ runs:
           cat "$report_path" >> "$GITHUB_STEP_SUMMARY"
         fi
         echo "report_path=$report_path" >> "$GITHUB_OUTPUT"
+        if [[ "$CP_ATTEST" == "true" ]]; then echo "attestation_path=${CP_BUNDLE}/attestation.json" >> "$GITHUB_OUTPUT"; else echo "attestation_path=" >> "$GITHUB_OUTPUT"; fi
         exit "$status"

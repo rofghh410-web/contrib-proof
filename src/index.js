@@ -7,7 +7,8 @@ module.exports = {
   ...require("./dependencies"),
   ...require("./engine"),
   ...require("./doctor"),
-  ...require("./exceptions"),
+  ...require("./annotations"),
+  ...require("./attestation"),
   ...require("./fixtures"),
   ...require("./gate"),
   ...require("./html"),
@@ -18,5 +19,6 @@ module.exports = {
   ...require("./proof"),
   ...require("./report"),
   ...require("./review"),
+  ...require("./runner"),
   ...require("./validate")
 };

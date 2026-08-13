@@ -2,6 +2,26 @@
 
 All notable changes to ContribProof are documented here.
 
+## 0.9.0 — 2026-08-13
+
+### Added
+
+- Ed25519 proof attestations that bind a proof bundle's report, evidence, and bundle hashes to an explicit maintainer trust root;
+- `attest-keygen`, `attest`, and `attest-verify` CLI commands with JSON/Markdown verification output;
+- public JSON Schema contracts for proof attestations and attestation verification results;
+- regression coverage for trusted-key matching, subject tampering, CLI integration, bounded command output, and timeout cleanup.
+
+### Security
+
+- attestation verification checks the Ed25519 algorithm, public-key SHA-256 fingerprint, canonical payload signature, and optional proof-manifest subject in one deterministic result;
+- private key files are written with mode `0600`, public key files with mode `0644`, and existing key material is never overwritten without `--force`;
+- configured commands now cap output while streaming and terminate detached Unix process groups with SIGTERM followed by SIGKILL after a bounded grace period.
+
+### Changed
+
+- bumped the public package and CLI version to `0.9.0`;
+- runner results now expose `outputTruncated`, `timeoutMs`, and `termination` metadata without removing existing fields.
+
 ## 0.8.2 — 2026-08-12
 
 ### Fixed

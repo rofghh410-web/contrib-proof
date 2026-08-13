@@ -1,9 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const packageJson = require("../package.json");
 const { formatHtml } = require("./html");
 
 const TOOL_NAME = "ContribProof";
-const TOOL_VERSION = "0.8.2";
+const TOOL_VERSION = packageJson.version;
 
 function summarize(checks, strict = false) {
   const counts = { pass: 0, warn: 0, fail: 0, skip: 0 };

@@ -26,8 +26,9 @@ const { buildDoctorReport } = require("../src/doctor");
 const { appendLedger, readLedger, resolveLedgerPath, verifyLedger } = require("../src/ledger");
 const { buildVerificationReport } = require("../src/engine");
 const { createProofManifest, verifyProofBundle, writeProofBundle } = require("../src/proof");
+const { createProofAttestation, generateAttestationKeyPair, verifyProofAttestation } = require("../src/attestation");
 const { runFixtureSuite } = require("../src/fixtures");
-const { validateExecutionContext, validateFixtureSuite, validateProofManifest, validateProofVerification } = require("../src/validate");
+const { validateExecutionContext, validateFixtureSuite, validateProofAttestation, validateProofAttestationVerification, validateProofManifest, validateProofVerification } = require("../src/validate");
 
 test("shared verification engine records reproducible execution context", () => {
   const fixtureRoot = path.resolve(__dirname, "fixtures", "healthy");
@@ -63,6 +64,30 @@ test("proof verification detects changed manifests and unsafe evidence paths", (
   const invalidPath = verifyProofBundle(bundle, fixtureRoot);
   assert.equal(invalidPath.valid, false);
   assert.ok(invalidPath.errors.some((error) => error.includes("remain relative")));
+});
+
+test("Ed25519 proof attestations bind a trusted key to one immutable proof identity", () => {
+  const fixtureRoot = path.resolve(__dirname, "fixtures", "healthy");
+  const report = buildVerificationReport(fixtureRoot, { execute: true });
+  const manifest = createProofManifest(fixtureRoot, report);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "contrib-proof-attestation-"));
+  const generated = generateAttestationKeyPair(path.join(directory, "private.pem"), path.join(directory, "public.pem"));
+  const privateKey = fs.readFileSync(generated.privateKeyPath, "utf8");
+  const publicKey = fs.readFileSync(generated.publicKeyPath, "utf8");
+  const attestation = createProofAttestation(manifest, privateKey, { createdAt: "2026-08-13T00:00:00.000Z", keyId: "maintainer-key-1" });
+  const verified = verifyProofAttestation(attestation, publicKey, manifest);
+  assert.equal(validateProofAttestation(attestation).valid, true);
+  assert.equal(verified.valid, true);
+  assert.equal(verified.signatureValid, true);
+  assert.equal(verified.keyTrusted, true);
+  assert.equal(verified.subjectValid, true);
+  assert.equal(validateProofAttestationVerification(verified).valid, true);
+
+  const tampered = { ...attestation, subject: { ...attestation.subject, bundleHash: "0".repeat(64) } };
+  const invalid = verifyProofAttestation(tampered, publicKey, manifest);
+  assert.equal(invalid.valid, false);
+  assert.equal(invalid.signatureValid, false);
+  assert.equal(invalid.subjectValid, false);
 });
 
 test("fixture suite is declarative and validates as a public artifact", () => {
@@ -140,6 +165,18 @@ test("controlled runner executes without shell and returns bounded result", asyn
   assert.equal(result.ok, true);
   assert.equal(result.stdout, "ok");
   assert.equal(buildSafeEnvironment({ OPENAI_API_KEY: "should-not-pass" }).OPENAI_API_KEY, undefined);
+});
+
+test("controlled runner bounds streamed output and ends timed-out process groups", async () => {
+  const noisy = await executeCommand({ run: process.execPath, args: ["-e", "process.stdout.write('x'.repeat(4096))"] }, { cwd: process.cwd(), maxOutputBytes: 64 });
+  assert.equal(noisy.ok, true);
+  assert.equal(noisy.outputTruncated, true);
+  assert.match(noisy.stdout, /\[truncated\]$/);
+
+  const timedOut = await executeCommand({ run: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"] }, { cwd: process.cwd(), timeoutMs: 80, killGraceMs: 80 });
+  assert.equal(timedOut.ok, false);
+  assert.equal(timedOut.timedOut, true);
+  assert.ok(["SIGTERM", "SIGKILL"].includes(timedOut.termination));
 });
 
 test("OpenAI explanation adapter uses Responses API output_text and redacts keys", async () => {

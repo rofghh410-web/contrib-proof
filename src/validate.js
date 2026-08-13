@@ -267,6 +267,37 @@ function validateProofVerification(result) {
   return { valid: errors.length === 0, errors };
 }
 
+function validateProofAttestation(attestation) {
+  const errors = [];
+  if (!attestation || typeof attestation !== "object" || Array.isArray(attestation)) return { valid: false, errors: ["proof-attestation: expected an object"] };
+  if (attestation.schemaVersion !== 1) push(errors, "proof-attestation.schemaVersion", "must be 1");
+  if (attestation.kind !== "proof-attestation") push(errors, "proof-attestation.kind", "must be proof-attestation");
+  if (attestation.algorithm !== "ed25519") push(errors, "proof-attestation.algorithm", "must be ed25519");
+  if (typeof attestation.createdAt !== "string" || !Number.isFinite(Date.parse(attestation.createdAt))) push(errors, "proof-attestation.createdAt", "must be an ISO-8601 timestamp");
+  if (!attestation.subject || typeof attestation.subject !== "object" || Array.isArray(attestation.subject)) push(errors, "proof-attestation.subject", "must be an object");
+  else for (const field of ["reportHash", "evidenceHash", "bundleHash"]) if (!/^[0-9a-f]{64}$/.test(attestation.subject[field] || "")) push(errors, `proof-attestation.subject.${field}`, "must be a 64-character lowercase SHA-256 digest");
+  if (!attestation.key || typeof attestation.key !== "object" || Array.isArray(attestation.key)) push(errors, "proof-attestation.key", "must be an object");
+  else {
+    if (typeof attestation.key.keyId !== "string" || !attestation.key.keyId) push(errors, "proof-attestation.key.keyId", "must be a non-empty string");
+    if (!/^[0-9a-f]{64}$/.test(attestation.key.publicKeySha256 || "")) push(errors, "proof-attestation.key.publicKeySha256", "must be a 64-character lowercase SHA-256 digest");
+  }
+  if (typeof attestation.signature !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(attestation.signature) || Buffer.from(attestation.signature, "base64").length === 0) push(errors, "proof-attestation.signature", "must be a non-empty base64 signature");
+  return { valid: errors.length === 0, errors };
+}
+
+function validateProofAttestationVerification(result) {
+  const errors = [];
+  if (!result || typeof result !== "object" || Array.isArray(result)) return { valid: false, errors: ["proof-attestation-verification: expected an object"] };
+  if (result.schemaVersion !== 1) push(errors, "proof-attestation-verification.schemaVersion", "must be 1");
+  if (result.kind !== "proof-attestation-verification") push(errors, "proof-attestation-verification.kind", "must be proof-attestation-verification");
+  for (const field of ["valid", "signatureValid", "keyTrusted"]) if (typeof result[field] !== "boolean") push(errors, `proof-attestation-verification.${field}`, "must be a boolean");
+  if (result.subjectValid !== null && typeof result.subjectValid !== "boolean") push(errors, "proof-attestation-verification.subjectValid", "must be a boolean or null");
+  if (result.keyId !== null && typeof result.keyId !== "string") push(errors, "proof-attestation-verification.keyId", "must be a string or null");
+  for (const field of ["publicKeySha256", "bundleHash"]) if (result[field] !== null && result[field] !== undefined && !/^[0-9a-f]{64}$/.test(result[field])) push(errors, `proof-attestation-verification.${field}`, "must be a SHA-256 digest or null");
+  if (!Array.isArray(result.errors)) push(errors, "proof-attestation-verification.errors", "must be an array");
+  return { valid: errors.length === 0, errors };
+}
+
 function validateProofManifest(manifest) {
   const errors = [];
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return { valid: false, errors: ["proof-manifest: expected an object"] };
@@ -371,6 +402,8 @@ module.exports = {
   validateExecutionContext,
   validateFixtureSuite,
   validatePlan,
+  validateProofAttestation,
+  validateProofAttestationVerification,
   validateProofManifest,
   validateProofVerification,
   validateReport,
